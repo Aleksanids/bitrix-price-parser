@@ -1,97 +1,72 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Главная</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background-color: #f4f4f9; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .button { padding: 10px 20px; background-color: #2a77d4; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        .button:hover { background-color: #1c5aa7; }
-        #mapping-container { display: none; margin-top: 20px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Парсер цен</h1>
-        <p>Загрузите Excel-файл и установите соответствие полей.</p>
-        <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
-            <input type="file" id="fileInput" name="file" required>
-            <button type="submit" class="button">Загрузить</button>
-        </form>
-        <div id="mapping-container">
-            <h3>Настройка соответствия полей</h3>
-            <label>Колонка с артикулами:</label>
-            <select id="article-column"></select>
-            <br>
-            <label>Колонка с ценой:</label>
-            <select id="price-column"></select>
-            <br>
-            <button id="confirm-mapping" class="button">Подтвердить</button>
-        </div>
-        <p id="message"></p>
-        <p id="download-link" style="display: none;"></p>
-    </div>
-    <script>
-        $(document).ready(function(){
-            $("#uploadForm").submit(function(e){
-                e.preventDefault();
-                var formData = new FormData(this);
-                $.ajax({
-                    url: "/upload",
-                    type: "POST",
-                    data: formData,
-                    contentType: false,
-                    processData: false,
-                    success: function(response){
-                        if(response.columns){
-                            $("#mapping-container").show();
-                            $("#article-column").html(response.columns.map(col => `<option value="${col}">${col}</option>`));
-                            $("#price-column").html(response.columns.map(col => `<option value="${col}">${col}</option>`));
-                        }
-                    },
-                    error: function(){
-                        $("#message").text("Ошибка загрузки файла.");
+<script>
+    $(document).ready(function(){
+        let fileId = null;
+
+        $("#uploadForm").submit(function(e){
+            e.preventDefault();
+            var formData = new FormData(this);
+            $.ajax({
+                url: "/upload",
+                type: "POST",
+                data: formData,
+                contentType: false,
+                processData: false,
+                success: function(response){
+                    if(response.status === "success") {
+                        fileId = response.file_id;  // Сохраняем file_id
+                        $("#mapping-container").show();
+                        $("#article-column").html(response.columns.map(col => `<option value="${col}">${col}</option>`));
+                        $("#price-column").html(response.columns.map(col => `<option value="${col}">${col}</option>`));
+                    } else {
+                        $("#message").text(response.message || "Ошибка загрузки файла.");
                     }
-                });
-            });
-            $("#confirm-mapping").click(function(){
-                let articleColumn = $("#article-column").val();
-                let priceColumn = $("#price-column").val();
-                $.ajax({
-                    url: "/confirm-mapping",
-                    type: "POST",
-                    contentType: "application/json",
-                    data: JSON.stringify({ article_column: articleColumn, price_column: priceColumn }),
-                    success: function(){
-                        $("#message").text("Соответствие полей установлено!");
-                        // Автоматически запускаем обработку файла
-                        $.ajax({
-                            url: "/process",
-                            type: "POST",
-                            contentType: "application/json",
-                            data: JSON.stringify({ file_id: response.file_id }),
-                            success: function(resp){
-                                if(resp.download_url){
-                                    $("#message").html("<b>Файл обработан!</b>");
-                                    $("#download-link").html(`<a href="${resp.download_url}" class="button" download>Скачать отчет</a>`).show();
-                                } else {
-                                    $("#message").text("Обработка завершена, но ссылка на отчет не получена.");
-                                }
-                            },
-                            error: function(xhr){
-                                $("#message").text("Ошибка обработки файла: " + (xhr.responseJSON ? xhr.responseJSON.message : "Неизвестная ошибка."));
-                            }
-                        });
-                    },
-                    error: function(){
-                        $("#message").text("Ошибка при подтверждении соответствия полей.");
-                    }
-                });
+                },
+                error: function(){
+                    $("#message").text("Ошибка загрузки файла.");
+                }
             });
         });
-    </script>
-</body>
-</html>
+
+        $("#confirm-mapping").click(function(){
+            let articleColumn = $("#article-column").val();
+            let priceColumn = $("#price-column").val();
+
+            $.ajax({
+                url: "/confirm-mapping",
+                type: "POST",
+                contentType: "application/json",
+                data: JSON.stringify({ article_column: articleColumn, price_column: priceColumn }),
+                success: function(){
+                    $("#message").text("Соответствие полей установлено!");
+
+                    if (!fileId) {
+                        $("#message").text("Ошибка: file_id не найден.");
+                        return;
+                    }
+
+                    // Запуск обработки файла
+                    $.ajax({
+                        url: "/process",
+                        type: "POST",
+                        contentType: "application/json",
+                        data: JSON.stringify({ file_id: fileId }),
+                        success: function(resp){
+                            if(resp.download_url){
+                                $("#message").html("<b>Файл обработан!</b>");
+                                $("#download-link").html(`<a href="${resp.download_url}" class="button" download>Скачать отчет</a>`).show();
+                            } else {
+                                $("#message").text("Обработка завершена, но ссылка на отчет не получена.");
+                            }
+                        },
+                        error: function(xhr){
+                            $("#message").text("Ошибка обработки файла: " + (xhr.responseJSON ? xhr.responseJSON.message : "Неизвестная ошибка."));
+                        }
+                    });
+                },
+                error: function(){
+                    $("#message").text("Ошибка при подтверждении соответствия полей.");
+                }
+            });
+        });
+    });
+</script>
