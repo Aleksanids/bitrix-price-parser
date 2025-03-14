@@ -37,17 +37,14 @@ def init_db():
 
 @app.route('/', methods=['GET'])
 def home():
-    return render_template("upload.html")
+    return render_template("index.html")
 
-<<<<<<< HEAD
-=======
 def get_column_name(df, expected_name):
     for col in df.columns:
         if expected_name.lower() in col.lower():
             return col
     return None
 
->>>>>>> 468536c (Исправление ошибок загрузки файлов, улучшение парсинга Excel)
 def get_price_from_sites(article):
     sites = {
         "Exist.ru": f"https://exist.ru/Parts?article={article}",
@@ -115,11 +112,6 @@ def upload_file():
 
 def process_excel(file_path, file_id):
     try:
-<<<<<<< HEAD
-        df = pd.read_excel(file_path, usecols=["Каталожный номер", "Цена заказчика"])
-    except ValueError:
-        return jsonify({"status": "error", "message": "Файл не содержит нужных колонок."}), 400
-=======
         df = pd.read_excel(file_path)
         article_col = get_column_name(df, "Каталожный номер")
         price_col = get_column_name(df, "Цена заказчика")
@@ -130,41 +122,22 @@ def process_excel(file_path, file_id):
         df = df[[article_col, price_col]]
     except ValueError:
         return jsonify({"status": "error", "message": "Ошибка чтения файла."}), 400
->>>>>>> 468536c (Исправление ошибок загрузки файлов, улучшение парсинга Excel)
 
     if df.empty:
         return jsonify({"status": "error", "message": "Файл пуст."}), 400
-
-    df['Найденные цены'] = None
-    df['Разница с ценой заказчика'] = None
-    df['Магазины'] = None
-    df['Ссылки'] = None
-
-<<<<<<< HEAD
-    futures = {executor.submit(check_and_update_price, row['Каталожный номер']): idx for idx, row in df.iterrows() if pd.notna(row['Каталожный номер'])}
-=======
-    futures = {executor.submit(check_and_update_price, row[article_col]): idx for idx, row in df.iterrows() if pd.notna(row[article_col])}
->>>>>>> 468536c (Исправление ошибок загрузки файлов, улучшение парсинга Excel)
-
-    for future in as_completed(futures):
-        index = futures[future]
-        price_data = future.result()
-        if price_data:
-            min_price = min(p['price'] for p in price_data)
-            df.at[index, 'Найденные цены'] = min_price
-<<<<<<< HEAD
-            df.at[index, 'Разница с ценой заказчика'] = df.at[index, 'Цена заказчика'] - min_price
-=======
-            df.at[index, 'Разница с ценой заказчика'] = df.at[index, price_col] - min_price
->>>>>>> 468536c (Исправление ошибок загрузки файлов, улучшение парсинга Excel)
-            df.at[index, 'Магазины'] = ", ".join(p['store'] for p in price_data)
-            df.at[index, 'Ссылки'] = ", ".join(p['url'] for p in price_data)
-
+    
     output_file = os.path.join(result_folder, f"{file_id}_result.xlsx")
     df.to_excel(output_file, index=False)
+    
+    return jsonify({"status": "success", "download_url": f"/download/{file_id}"})
 
-    return send_file(output_file, as_attachment=True, download_name=f"{file_id}_result.xlsx",
-                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+@app.route('/download/<file_id>', methods=['GET'])
+def download_file(file_id):
+    output_file = os.path.join(result_folder, f"{file_id}_result.xlsx")
+    if os.path.exists(output_file):
+        return send_file(output_file, as_attachment=True, download_name=f"{file_id}_result.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return jsonify({"status": "error", "message": "Файл не найден"}), 404
 
 if __name__ == '__main__':
     init_db()
