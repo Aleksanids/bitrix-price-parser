@@ -36,7 +36,7 @@ def init_db():
         conn.commit()
 
 # Главная страница с инструкцией для Битрикс24
-@app.route('/')
+@app.route('/', methods=['GET', 'POST'])
 def home():
     return render_template("index.html")
 
