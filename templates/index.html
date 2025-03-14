@@ -13,7 +13,7 @@
                 processData: false,
                 success: function(response){
                     if(response.status === "success") {
-                        fileId = response.file_id;  // Сохраняем file_id
+                        fileId = response.file_id;  
                         $("#mapping-container").show();
                         $("#article-column").html(response.columns.map(col => `<option value="${col}">${col}</option>`));
                         $("#price-column").html(response.columns.map(col => `<option value="${col}">${col}</option>`));
@@ -31,6 +31,11 @@
             let articleColumn = $("#article-column").val();
             let priceColumn = $("#price-column").val();
 
+            if (!fileId) {
+                $("#message").text("Ошибка: file_id не найден.");
+                return;
+            }
+
             $.ajax({
                 url: "/confirm-mapping",
                 type: "POST",
@@ -39,12 +44,6 @@
                 success: function(){
                     $("#message").text("Соответствие полей установлено!");
 
-                    if (!fileId) {
-                        $("#message").text("Ошибка: file_id не найден.");
-                        return;
-                    }
-
-                    // Запуск обработки файла
                     $.ajax({
                         url: "/process",
                         type: "POST",

@@ -6,13 +6,13 @@ import logging
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, request, jsonify, render_template, send_file
+from flask import Flask, request, jsonify, render_template, send_file, send_from_directory
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static")
 UPLOAD_FOLDER = "uploads"
 RESULT_FOLDER = "results"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -26,73 +26,10 @@ DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0"}
 price_cache = {}
 column_mapping = {}
 
-# Функции парсинга цен (остаются без изменений)
-def parse_price_exist(article):
-    try:
-        url = f"https://www.exist.ru/Price/?pcode={article}"
-        response = session.get(url, headers=DEFAULT_HEADERS, timeout=5)
-        response.raise_for_status()
-        html = response.text.replace('&nbsp;', ' ').replace('\xa0', ' ')
-        price_matches = re.findall(r'(\d[\d\s]*)(?:р\.|руб\.)', html)
-        price_matches += re.findall(r'(\d[\d\s]*)₽', html)
-        prices = [int(re.sub(r'\D', '', p)) for p in price_matches if re.sub(r'\D', '', p)]
-        return min(prices) if prices else None
-    except Exception as e:
-        logging.error(f"Exist parser error: {e}")
-        return None
-
-def parse_price_zzap(article):
-    try:
-        url = f"http://www.zzap.ru/default.aspx?partnumber={article}&currency=1"
-        response = session.get(url, headers=DEFAULT_HEADERS, timeout=5)
-        response.raise_for_status()
-        html = response.text.replace('&nbsp;', ' ').replace('\xa0', ' ')
-        price_matches = re.findall(r'(\d[\d\s]*)р\.', html)
-        prices = [int(p.replace(' ', '')) for p in price_matches if p.replace(' ', '').isdigit()]
-        return min(prices) if prices else None
-    except Exception as e:
-        logging.error(f"ZZap parser error: {e}")
-        return None
-
-def parse_price_major_auto(article):
-    try:
-        url = f"https://parts.major-auto.ru/SearchNew?value={article}"
-        response = session.get(url, headers=DEFAULT_HEADERS, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-        element = soup.find("td", class_=lambda x: x and "price" in x)
-        if element:
-            return float(re.sub(r"[^\d.]", "", element.get_text()))
-        return None
-    except Exception as e:
-        logging.error(f"Major Auto parser error: {e}")
-        return None
-
-# Агрегация цен с кэшированием
-def process_article(article_val, original_price):
-    if article_val in price_cache:
-        logging.info(f"Используем кэш для артикула {article_val}")
-        return price_cache[article_val]
-
-    parsers = {
-        "Exist": parse_price_exist,
-        "ZZap": parse_price_zzap,
-        "MajorAuto": parse_price_major_auto
-    }
-
-    prices = {source: func(article_val) for source, func in parsers.items()}
-    valid_prices = [p for p in prices.values() if p is not None]
-
-    if not valid_prices:
-        result = ("Нет данных", "Нет данных", "Нет данных")
-    else:
-        market_price = min(valid_prices)
-        price_diff = float(original_price) - market_price
-        comment = "Цена выше рынка" if price_diff > 0 else "Цена ниже рынка" if price_diff < 0 else "Цена на уровне рынка"
-        result = (market_price, price_diff, comment)
-
-    price_cache[article_val] = result
-    return result
+# Разрешаем доступ к статическим файлам
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory("static", filename)
 
 @app.route('/')
 def home():
@@ -176,4 +113,4 @@ def download_file(file_id):
     return jsonify({"status": "error", "message": "Файл не найден"}), 404
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
