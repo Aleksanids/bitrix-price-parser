@@ -10,12 +10,18 @@ RESULT_FOLDER = "results"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(RESULT_FOLDER, exist_ok=True)
 
+ALLOWED_EXTENSIONS = {'xlsx'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 @app.route('/')
 def home():
     return render_template("index.html")
-@app.route('/')
-def home():
-    return render_template("index.html")
+
+@app.route('/upload.html')
+def upload_page():
+    return render_template("upload.html")
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -25,6 +31,9 @@ def upload_file():
     file = request.files['file']
     if file.filename == '':
         return jsonify({"status": "error", "message": "Имя файла не указано"}), 400
+    
+    if not allowed_file(file.filename):
+        return jsonify({"status": "error", "message": "Разрешены только файлы .xlsx"}), 400
 
     file_id = str(uuid.uuid4())
     file_path = os.path.join(UPLOAD_FOLDER, f"{file_id}.xlsx")
