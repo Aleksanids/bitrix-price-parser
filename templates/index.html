@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Главная</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -33,13 +34,74 @@
         .button:hover {
             background-color: #1c5aa7;
         }
+        #mapping-container {
+            display: none;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Добро пожаловать в приложение для анализа цен</h1>
         <p>Загрузите файл Excel с данными, и получите обработанный отчет.</p>
-        <a href="upload.html" class="button">Загрузить файл</a>
+        <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+            <input type="file" id="fileInput" name="file" required>
+            <button type="submit" id="uploadBtn" class="button">Загрузить</button>
+        </form>
+
+        <div id="mapping-container">
+            <h3>Настройка соответствия полей</h3>
+            <label>Выберите колонку с артикулами:</label>
+            <select id="article-column"></select>
+            <label>Выберите колонку с ценами:</label>
+            <select id="price-column"></select>
+            <button id="confirm-mapping" class="button">Подтвердить</button>
+        </div>
+
+        <p id="message"></p>
+        <p id="download-link" style="display: none;"></p>
     </div>
+
+    <script>
+        $(document).ready(function () {
+            $("#uploadForm").submit(function (e) {
+                e.preventDefault();
+                var formData = new FormData(this);
+
+                $.ajax({
+                    url: "/upload",
+                    type: "POST",
+                    data: formData,
+                    contentType: false,
+                    processData: false,
+                    success: function (response) {
+                        if (response.columns) {
+                            $("#mapping-container").show();
+                            $("#article-column").html(response.columns.map(col => `<option value="${col}">${col}</option>`));
+                            $("#price-column").html(response.columns.map(col => `<option value="${col}">${col}</option>`));
+                        }
+                    },
+                    error: function () {
+                        $("#message").text("Ошибка загрузки файла.");
+                    }
+                });
+            });
+
+            $("#confirm-mapping").click(function () {
+                let articleColumn = $("#article-column").val();
+                let priceColumn = $("#price-column").val();
+
+                $.ajax({
+                    url: "/confirm-mapping",
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ article_column: articleColumn, price_column: priceColumn }),
+                    success: function (response) {
+                        $("#message").text("Соответствие полей установлено!");
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>

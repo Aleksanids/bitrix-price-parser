@@ -10,18 +10,11 @@ RESULT_FOLDER = "results"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(RESULT_FOLDER, exist_ok=True)
 
-ALLOWED_EXTENSIONS = {'xlsx'}
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+column_mapping = {}
 
 @app.route('/')
 def home():
     return render_template("index.html")
-
-@app.route('/upload.html')
-def upload_page():
-    return render_template("upload.html")
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -31,36 +24,45 @@ def upload_file():
     file = request.files['file']
     if file.filename == '':
         return jsonify({"status": "error", "message": "Имя файла не указано"}), 400
-    
-    if not allowed_file(file.filename):
-        return jsonify({"status": "error", "message": "Разрешены только файлы .xlsx"}), 400
 
     file_id = str(uuid.uuid4())
     file_path = os.path.join(UPLOAD_FOLDER, f"{file_id}.xlsx")
     file.save(file_path)
 
-    return process_excel(file_path, file_id)
+    df = pd.read_excel(file_path)
+    return jsonify({"status": "success", "columns": list(df.columns), "file_id": file_id})
 
-def process_excel(file_path, file_id):
-    try:
-        df = pd.read_excel(file_path)
-        if df.empty:
-            return jsonify({"status": "error", "message": "Файл пуст"}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Ошибка обработки файла: {str(e)}"}), 400
+@app.route('/confirm-mapping', methods=['POST'])
+def confirm_mapping():
+    global column_mapping
+    data = request.get_json()
+    column_mapping["article"] = data["article_column"]
+    column_mapping["price"] = data["price_column"]
+    return jsonify({"status": "success", "message": "Соответствие полей установлено!"})
+
+@app.route('/process', methods=['POST'])
+def process_file():
+    file_id = request.json.get("file_id")
+    file_path = os.path.join(UPLOAD_FOLDER, f"{file_id}.xlsx")
+
+    if not os.path.exists(file_path):
+        return jsonify({"status": "error", "message": "Файл не найден"}), 400
+
+    df = pd.read_excel(file_path)
+    article_col = column_mapping.get("article")
+    price_col = column_mapping.get("price")
+
+    if not article_col or not price_col:
+        return jsonify({"status": "error", "message": "Не выбрано соответствие полей"}), 400
+
+    df["Рыночная цена"] = df[price_col] * 0.9  # Примерное уменьшение цены
+    df["Разница в цене"] = df[price_col] - df["Рыночная цена"]
+    df["Комментарий"] = df.apply(lambda row: "Цена выше рынка" if row["Разница в цене"] > 0 else "Цена ниже рынка", axis=1)
 
     output_file = os.path.join(RESULT_FOLDER, f"{file_id}_result.xlsx")
     df.to_excel(output_file, index=False)
-    
-    return jsonify({"status": "success", "download_url": f"/download/{file_id}"})
 
-@app.route('/download/<file_id>')
-def download_file(file_id):
-    output_file = os.path.join(RESULT_FOLDER, f"{file_id}_result.xlsx")
-    if os.path.exists(output_file):
-        return send_file(output_file, as_attachment=True, download_name=f"{file_id}_result.xlsx",
-                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    return jsonify({"status": "error", "message": "Файл не найден"}), 404
+    return jsonify({"status": "success", "download_url": f"/download/{file_id}"})
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
