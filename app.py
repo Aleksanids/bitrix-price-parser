@@ -160,8 +160,14 @@ def process_excel(file_path, file_id, column1, column2):
     df = pd.concat([result_row, df], ignore_index=True)
 
     output_file = os.path.join(result_folder, f"{file_id}_result.xlsx")
-    df.to_excel(output_file, index=False)
-    return send_file(output_file, as_attachment=True)
+    with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False)
+
+    if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
+        return jsonify({"status": "error", "message": "Ошибка: Файл не был создан или пустой"}), 500
+
+    return send_file(output_file, as_attachment=True, download_name=f"{file_id}_result.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 if __name__ == '__main__':
     init_db()
