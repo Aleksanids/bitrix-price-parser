@@ -9,9 +9,10 @@ import json
 import time
 import logging
 import uuid
+import gc  # Модуль для очистки памяти
 
 app = Flask(__name__)
-executor = ThreadPoolExecutor(max_workers=10)
+executor = ThreadPoolExecutor(max_workers=5)  # Ограничиваем количество потоков
 
 # Пути для хранения файлов
 db_path = "price_cache.db"
@@ -35,7 +36,7 @@ def init_db():
         ''')
         conn.commit()
 
-# Главная страница
+# Главная страница с загрузкой файла в Битрикс24
 @app.route('/', methods=['GET'])
 def home():
     return render_template("upload.html")
@@ -53,7 +54,7 @@ def get_price_from_sites(article):
     
     for store, url in sites.items():
         try:
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=headers, timeout=5)  # Ограничиваем ожидание ответа
             if response.status_code == 200:
                 soup = BeautifulSoup(response.text, "html.parser")
                 price_element = soup.find("span", class_="price-value")
@@ -94,14 +95,20 @@ def upload_file():
     file_path = os.path.join(upload_folder, f"{file_id}.xlsx")
     file.save(file_path)
 
+    # Ограничение размера файла (максимум 10 МБ)
+    MAX_FILE_SIZE_MB = 10
+    file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    if file_size_mb > MAX_FILE_SIZE_MB:
+        return jsonify({"status": "error", "message": "Ошибка: Файл слишком большой. Максимальный размер 10 МБ."}), 400
+
     return process_excel(file_path, file_id)
 
 # Обработка Excel-файла
 def process_excel(file_path, file_id):
-    df = pd.read_excel(file_path)
+    df = pd.read_excel(file_path, usecols=["Каталожный номер", "Цена заказчика"])  # Загружаем только нужные колонки
 
-    if "Каталожный номер" not in df.columns or "Цена заказчика" not in df.columns:
-        return jsonify({"status": "error", "message": "Ошибка: В файле нет необходимых колонок"}), 400
+    if df.empty:
+        return jsonify({"status": "error", "message": "Ошибка: Файл пуст или не содержит нужных колонок."}), 400
 
     df['Найденные цены'] = None
     df['Разница с ценой заказчика'] = None
@@ -126,6 +133,9 @@ def process_excel(file_path, file_id):
 
     if not os.path.exists(output_file) or os.path.getsize(output_file) == 0:
         return jsonify({"status": "error", "message": "Ошибка: Файл пустой"}), 500
+
+    del df  # Удаляем DataFrame из памяти
+    gc.collect()  # Принудительно очищаем память
 
     return send_file(output_file, as_attachment=True, download_name=f"{file_id}_result.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
