@@ -6,55 +6,12 @@
     <title>Загрузка файла</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-            background-color: #f4f4f9;
-            color: #333;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-        #progress-container {
-            display: none;
-            width: 100%;
-            background-color: #f3f3f3;
-            margin-top: 10px;
-        }
-        #progress-bar {
-            width: 0%;
-            height: 20px;
-            background-color: #4CAF50;
-            text-align: center;
-            color: white;
-            line-height: 20px;
-        }
-        #loading-text {
-            display: none;
-            font-size: 16px;
-            color: #007bff;
-            font-weight: bold;
-            margin-top: 10px;
-        }
-        .button {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #2a77d4;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 16px;
-            transition: background-color 0.3s ease;
-        }
-        .button:hover {
-            background-color: #1c5aa7;
-        }
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background-color: #f4f4f9; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        #progress-container { display: none; width: 100%; background-color: #f3f3f3; margin-top: 10px; }
+        #progress-bar { width: 0%; height: 20px; background-color: #4CAF50; text-align: center; color: white; line-height: 20px; }
+        .button { padding: 10px 20px; background-color: #2a77d4; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .button:hover { background-color: #1c5aa7; }
     </style>
 </head>
 <body>
@@ -62,9 +19,8 @@
         <h2>Загрузите файл для анализа</h2>
         <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
             <input type="file" id="fileInput" name="file" required>
-            <button type="submit" id="uploadBtn" class="button">Загрузить</button>
+            <button type="submit" class="button">Загрузить</button>
         </form>
-        <div id="loading-text">Загрузка...</div>
         <div id="progress-container">
             <div id="progress-bar">0%</div>
         </div>
@@ -72,49 +28,38 @@
         <p id="download-link" style="display: none;"></p>
         <a href="/" class="button">На главную</a>
     </div>
-    
     <script>
-        $(document).ready(function () {
-            $("#uploadForm").submit(function (e) {
+        $(document).ready(function(){
+            $("#uploadForm").submit(function(e){
                 e.preventDefault();
                 var formData = new FormData(this);
-                
-                $("#loading-text").show();
-                $("#progress-container").show();
-                $("#progress-bar").width("10%").text("10%");
-                $("#download-link").hide();
                 $("#message").text("");
-
                 $.ajax({
                     url: "/upload",
                     type: "POST",
                     data: formData,
                     contentType: false,
                     processData: false,
-                    xhr: function () {
+                    xhr: function(){
                         var xhr = new window.XMLHttpRequest();
-                        xhr.upload.addEventListener("progress", function (evt) {
-                            if (evt.lengthComputable) {
-                                var percentComplete = (evt.loaded / evt.total) * 100;
+                        xhr.upload.addEventListener("progress", function(evt){
+                            if(evt.lengthComputable){
+                                var percentComplete = (evt.loaded/evt.total)*100;
                                 $("#progress-bar").width(percentComplete + "%").text(Math.round(percentComplete) + "%");
                             }
                         }, false);
                         return xhr;
                     },
-                    success: function (response) {
-                        if (response.download_url) {
-                            $("#message").html("<b>Файл обработан!</b>");
-                            $("#download-link").html("<a href='" + response.download_url + "' class='button' download>Скачать отчет</a>").show();
-                        } else {
-                            $("#message").text("Файл загружен, но не удалось получить ссылку на скачивание.");
-                        }
+                    success: function(response){
                         $("#progress-bar").width("100%").text("100%");
-                        $("#loading-text").hide();
+                        if(response.status === "success"){
+                            $("#message").html("<b>Файл успешно загружен.</b>");
+                        } else {
+                            $("#message").text(response.message || "Неизвестная ошибка.");
+                        }
                     },
-                    error: function (xhr) {
-                        $("#message").text("Ошибка загрузки файла! " + (xhr.responseJSON ? xhr.responseJSON.message : "Неизвестная ошибка."));
-                        $("#loading-text").hide();
-                        $("#progress-container").hide();
+                    error: function(xhr){
+                        $("#message").text("Ошибка загрузки файла: " + (xhr.responseJSON ? xhr.responseJSON.message : "Неизвестная ошибка."));
                     }
                 });
             });
