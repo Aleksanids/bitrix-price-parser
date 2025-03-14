@@ -39,6 +39,15 @@ def init_db():
 def home():
     return render_template("upload.html")
 
+<<<<<<< HEAD
+=======
+def get_column_name(df, expected_name):
+    for col in df.columns:
+        if expected_name.lower() in col.lower():
+            return col
+    return None
+
+>>>>>>> 468536c (Исправление ошибок загрузки файлов, улучшение парсинга Excel)
 def get_price_from_sites(article):
     sites = {
         "Exist.ru": f"https://exist.ru/Parts?article={article}",
@@ -106,9 +115,22 @@ def upload_file():
 
 def process_excel(file_path, file_id):
     try:
+<<<<<<< HEAD
         df = pd.read_excel(file_path, usecols=["Каталожный номер", "Цена заказчика"])
     except ValueError:
         return jsonify({"status": "error", "message": "Файл не содержит нужных колонок."}), 400
+=======
+        df = pd.read_excel(file_path)
+        article_col = get_column_name(df, "Каталожный номер")
+        price_col = get_column_name(df, "Цена заказчика")
+        
+        if not article_col or not price_col:
+            return jsonify({"status": "error", "message": "Файл не содержит нужных колонок."}), 400
+        
+        df = df[[article_col, price_col]]
+    except ValueError:
+        return jsonify({"status": "error", "message": "Ошибка чтения файла."}), 400
+>>>>>>> 468536c (Исправление ошибок загрузки файлов, улучшение парсинга Excel)
 
     if df.empty:
         return jsonify({"status": "error", "message": "Файл пуст."}), 400
@@ -118,7 +140,11 @@ def process_excel(file_path, file_id):
     df['Магазины'] = None
     df['Ссылки'] = None
 
+<<<<<<< HEAD
     futures = {executor.submit(check_and_update_price, row['Каталожный номер']): idx for idx, row in df.iterrows() if pd.notna(row['Каталожный номер'])}
+=======
+    futures = {executor.submit(check_and_update_price, row[article_col]): idx for idx, row in df.iterrows() if pd.notna(row[article_col])}
+>>>>>>> 468536c (Исправление ошибок загрузки файлов, улучшение парсинга Excel)
 
     for future in as_completed(futures):
         index = futures[future]
@@ -126,7 +152,11 @@ def process_excel(file_path, file_id):
         if price_data:
             min_price = min(p['price'] for p in price_data)
             df.at[index, 'Найденные цены'] = min_price
+<<<<<<< HEAD
             df.at[index, 'Разница с ценой заказчика'] = df.at[index, 'Цена заказчика'] - min_price
+=======
+            df.at[index, 'Разница с ценой заказчика'] = df.at[index, price_col] - min_price
+>>>>>>> 468536c (Исправление ошибок загрузки файлов, улучшение парсинга Excel)
             df.at[index, 'Магазины'] = ", ".join(p['store'] for p in price_data)
             df.at[index, 'Ссылки'] = ", ".join(p['url'] for p in price_data)
 
