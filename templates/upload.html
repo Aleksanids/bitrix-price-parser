@@ -30,8 +30,56 @@
     </style>
 </head>
 <body>
-
     <h2>Загрузите файл для анализа</h2>
-    <form id="uploadForm">
+    <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
         <input type="file" id="fileInput" name="file" required>
-        <button type="submit" id="uploadBtn">Загрузить
+        <button type="submit" id="uploadBtn">Загрузить</button>
+    </form>
+    <div id="loading-text">Загрузка...</div>
+    <div id="progress-container">
+        <div id="progress-bar">0%</div>
+    </div>
+    <p id="message"></p>
+
+    <script>
+        $(document).ready(function () {
+            $("#uploadForm").submit(function (e) {
+                e.preventDefault();
+                var formData = new FormData(this);
+                
+                $("#loading-text").show();
+                $("#progress-container").show();
+                $("#progress-bar").width("10%").text("10%");
+
+                $.ajax({
+                    url: "/upload",
+                    type: "POST",
+                    data: formData,
+                    contentType: false,
+                    processData: false,
+                    xhr: function () {
+                        var xhr = new window.XMLHttpRequest();
+                        xhr.upload.addEventListener("progress", function (evt) {
+                            if (evt.lengthComputable) {
+                                var percentComplete = (evt.loaded / evt.total) * 100;
+                                $("#progress-bar").width(percentComplete + "%").text(Math.round(percentComplete) + "%");
+                            }
+                        }, false);
+                        return xhr;
+                    },
+                    success: function (response) {
+                        $("#message").html("<b>Файл обработан! <a href='" + response.download_url + "'>Скачать результат</a></b>");
+                        $("#progress-bar").width("100%").text("100%");
+                        $("#loading-text").hide();
+                    },
+                    error: function () {
+                        $("#message").text("Ошибка загрузки файла!");
+                        $("#loading-text").hide();
+                        $("#progress-container").hide();
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
