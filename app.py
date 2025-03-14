@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 from flask import Flask, request, send_file, jsonify, render_template
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 import sqlite3
 import requests
 from bs4 import BeautifulSoup
@@ -9,7 +9,6 @@ import json
 import time
 import logging
 import uuid
-import gc
 
 app = Flask(__name__)
 executor = ThreadPoolExecutor(max_workers=5)
@@ -51,22 +50,24 @@ def get_price_from_sites(article):
         "ZZap.ru": f"https://www.zzap.ru/search/?query={article}",
         "Auto.ru": f"https://auto.ru/parts/{article}/"
     }
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {"User -Agent": "Mozilla/5.0"}
     results = []
     
     for store, url in sites.items():
         try:
             response = requests.get(url, headers=headers, timeout=5)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
-                price_element = soup.find("span", class_="price-value")
-                if price_element:
-                    price_text = price_element.get_text(strip=True).replace(" ", "").replace("₽", "").replace(",", ".")
-                    try:
-                        price = float(price_text)
-                        results.append({"store": store, "price": price, "url": url})
-                    except ValueError:
-                        logging.warning(f"Не удалось преобразовать цену на {store}")
+            response.raise_for_status()  # Генерирует исключение для статусов 4xx и 5xx
+            soup = BeautifulSoup(response.text, "html.parser")
+            price_element = soup.find("span", class_="price-value")
+            if price_element:
+                price_text = price_element.get_text(strip=True).replace(" ", "").replace("₽", "").replace(",", ".")
+                try:
+                    price = float(price_text)
+                    results.append({"store": store, "price": price, "url": url})
+                except ValueError:
+                    logging.warning(f"Не удалось преобразовать цену на {store}: '{price_text}'")
+        except requests.RequestException as e:
+            logging.error(f"Ошибка при запросе к {store}: {e}")
         except Exception as e:
             logging.error(f"Ошибка при парсинге {store}: {e}")
         time.sleep(0.3)
@@ -84,8 +85,8 @@ def check_and_update_price(article):
                 last_updated = pd.Timestamp(row[1])
                 if last_updated >= pd.Timestamp.now() - pd.Timedelta(days=7):
                     return json.loads(row[0])
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"Ошибка при обработке времени обновления: {e}")
 
         prices = get_price_from_sites(article)
         if prices:
@@ -120,8 +121,10 @@ def process_excel(file_path, file_id):
             return jsonify({"status": "error", "message": "Файл не содержит нужных колонок."}), 400
         
         df = df[[article_col, price_col]]
-    except ValueError:
-        return jsonify({"status": "error", "message": "Ошибка чтения файла."}), 400
+    except ValueError as e:
+        return jsonify({"status": "error", "message": f"Ошибка чтения файла: {e}"}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Непредвиденная ошибка: {e}"}), 500
 
     if df.empty:
         return jsonify({"status": "error", "message": "Файл пуст."}), 400
@@ -142,3 +145,5 @@ def download_file(file_id):
 if __name__ == '__main__':
     init_db()
     app.run(host="0.0.0.0", port=10000)
+
+Найти еще

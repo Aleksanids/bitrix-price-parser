@@ -10,12 +10,20 @@
             font-family: Arial, sans-serif;
             text-align: center;
             padding: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        h2 {
+            color: #2a77d4;
+            margin-bottom: 20px;
         }
         #progress-container {
             display: none;
             width: 100%;
             background-color: #f3f3f3;
             margin-top: 10px;
+            border-radius: 5px;
+            overflow: hidden;
         }
         #progress-bar {
             width: 0%;
@@ -24,6 +32,7 @@
             text-align: center;
             color: white;
             line-height: 20px;
+            transition: width 0.3s ease;
         }
         #loading-text {
             display: none;
@@ -32,13 +41,30 @@
             font-weight: bold;
             margin-top: 10px;
         }
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #2a77d4;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-top: 20px;
+            transition: background-color 0.3s ease;
+        }
+        .button:hover {
+            background-color: #1c5aa7;
+        }
+        form {
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
     <h2>Загрузите файл для анализа</h2>
     <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
         <input type="file" id="fileInput" name="file" required>
-        <button type="submit" id="uploadBtn">Загрузить</button>
+        <button type="submit" id="uploadBtn" class="button">Загрузить</button>
     </form>
     <div id="loading-text">Загрузка...</div>
     <div id="progress-container">

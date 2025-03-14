@@ -4,19 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Парсер цен</title>
-    <script src="https://api.bitrix24.com/api/v1/"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
             text-align: center;
+            background-color: #f4f4f9;
+            color: #333;
         }
         h1 {
             color: #2a77d4;
+            margin-bottom: 20px;
         }
         p {
             font-size: 16px;
             margin-bottom: 20px;
+            line-height: 1.6;
         }
         .button {
             display: inline-block;
@@ -25,18 +28,33 @@
             color: white;
             text-decoration: none;
             border-radius: 5px;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        .button:hover {
+            background-color: #1c5aa7;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
     </style>
 </head>
 <body>
-    <h1>Парсер цен</h1>
-    <p>Добро пожаловать! Это приложение помогает загружать файлы с артикулами автозапчастей, анализировать цены и сравнивать их с рыночными.</p>
-    
-    <h2>Как использовать?</h2>
-    <p>1. Нажмите кнопку "Загрузить файл".</p>
-    <p>2. Выберите Excel-файл с артикулами.</p>
-    <p>3. Нажмите "Отправить" и получите файл с анализом цен.</p>
-    
-    <a href="/upload.html" class="button">Загрузить файл</a>
+    <div class="container">
+        <h1>Парсер цен</h1>
+        <p>Добро пожаловать! Это приложение помогает загружать файлы с артикулами автозапчастей, анализировать цены и сравнивать их с рыночными.</p>
+        
+        <h2>Как использовать?</h2>
+        <p>1. Нажмите кнопку "Загрузить файл".</p>
+        <p>2. Выберите Excel-файл с артикулами.</p>
+        <p>3. Нажмите "Отправить" и получите файл с анализом цен.</p>
+        
+        <a href="/upload" class="button">Загрузить файл</a>
+    </div>
 </body>
 </html>
