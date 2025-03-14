@@ -41,7 +41,7 @@ def home():
     return render_template("index.html")
 
 # Страница загрузки файла
-@app.route('/form')
+@app.route('/form', methods=['GET'])
 def upload_form():
     return render_template("upload.html")
 
@@ -88,37 +88,48 @@ def check_and_update_price(article):
             conn.commit()
         return prices
 
+# Получение колонок из загруженного файла
+@app.route('/columns', methods=['POST'])
+def get_columns():
+    file = request.files.get('file')
+    if not file:
+        return jsonify({"status": "error", "message": "Файл не загружен"}), 400
+
+    df = pd.read_excel(file)
+    return jsonify({"status": "success", "columns": df.columns.tolist()})
+
 # Обработчик загрузки файлов
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    if 'file' not in request.files:
-        return jsonify({"status": "error", "message": "No file uploaded"}), 400
+    file = request.files.get('file')
+    column1 = request.form.get('column1')
+    column2 = request.form.get('column2')
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"status": "error", "message": "No selected file"}), 400
+    if not file or not column1 or not column2:
+        return jsonify({"status": "error", "message": "Ошибка: Файл или выбранные колонки не переданы"}), 400
 
     file_id = str(uuid.uuid4())
     file_path = os.path.join(upload_folder, f"{file_id}.xlsx")
     file.save(file_path)
 
-    return process_excel(file_path, file_id)
+    return process_excel(file_path, file_id, column1, column2)
 
-# Обработка Excel-файла
-def process_excel(file_path, file_id):
+# Обработка Excel-файла с выбранными пользователем колонками
+def process_excel(file_path, file_id, column1, column2):
     df = pd.read_excel(file_path)
-    if 'Каталожный номер' not in df.columns or 'Цена заказчика' not in df.columns:
-        return jsonify({"status": "error", "message": "Ошибка: В файле нет необходимых колонок"}), 400
+
+    if column1 not in df.columns or column2 not in df.columns:
+        return jsonify({"status": "error", "message": f"Ошибка: В файле нет выбранных колонок. Найдены: {df.columns.tolist()}"}), 400
 
     df['Найденные цены'] = None
     df['Разница с ценой заказчика'] = None
     df['Магазины'] = None
     df['Ссылки'] = None
 
-    futures = {executor.submit(check_and_update_price, row['Каталожный номер']): idx for idx, (index, row) in enumerate(df.iterrows())}
+    futures = {executor.submit(check_and_update_price, row[column1]): idx for idx, (index, row) in enumerate(df.iterrows())}
 
     total_difference = 0
-    total_customer_price = df['Цена заказчика'].sum()
+    total_customer_price = df[column2].sum()
 
     for future in as_completed(futures):
         index = futures[future]
@@ -129,7 +140,7 @@ def process_excel(file_path, file_id):
             min_price = min([p['price'] for p in price_data])
 
             df.at[index, 'Найденные цены'] = prices
-            difference = df.at[index, 'Цена заказчика'] - min_price
+            difference = df.at[index, column2] - min_price
             total_difference += difference
             df.at[index, 'Разница с ценой заказчика'] = difference
             df.at[index, 'Магазины'] = ", ".join([p['store'] for p in price_data])
@@ -138,8 +149,8 @@ def process_excel(file_path, file_id):
     percent_difference = (total_difference / total_customer_price) * 100 if total_customer_price else 0
     result_status = "Выгодно" if total_difference > 0 else "Не выгодно"
     result_row = pd.DataFrame({
-        'Каталожный номер': ['ИТОГО'],
-        'Цена заказчика': [total_customer_price],
+        column1: ['ИТОГО'],
+        column2: [total_customer_price],
         'Найденные цены': [result_status],
         'Разница с ценой заказчика': [f"{total_difference:.2f} ₽ ({percent_difference:.2f}%)"],
         'Магазины': [''],

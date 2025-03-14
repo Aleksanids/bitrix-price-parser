@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Загрузка файла</title>
-    <script src="https://api.bitrix24.com/api/v1/"></script> <!-- Подключаем Bitrix API -->
+    <script src="https://api.bitrix24.com/api/v1/"></script> <!-- API Bitrix24 -->
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -16,15 +16,15 @@
         }
         form {
             display: inline-block;
+            text-align: left;
             margin-top: 20px;
         }
-        input[type="file"] {
+        input, select, button {
             margin: 10px 0;
-            padding: 5px;
-            border: 1px solid #ccc;
+            padding: 8px;
+            width: 100%;
         }
         button {
-            padding: 10px 20px;
             background-color: #2a77d4;
             color: white;
             border: none;
@@ -43,16 +43,88 @@
 </head>
 <body>
     <h2>Загрузите файл для анализа</h2>
-    <form action="https://bitrix-price-parser.onrender.com/upload" method="POST" enctype="multipart/form-data" target="_blank" onsubmit="showLoading()">
-        <input type="file" name="file" required>
+    
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" id="fileInput" name="file" required>
+        
+        <h3>Выберите соответствие полей:</h3>
+        <label for="column1">Каталожный номер:</label>
+        <select id="column1" name="column1"></select>
+
+        <label for="column2">Цена заказчика:</label>
+        <select id="column2" name="column2"></select>
+
         <button type="submit">Загрузить</button>
     </form>
+
     <p id="loading">Файл загружается, пожалуйста, подождите...</p>
 
     <script>
-        function showLoading() {
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            let file = event.target.files[0];
+            if (!file) return;
+
+            let formData = new FormData();
+            formData.append('file', file);
+
+            fetch('https://bitrix-price-parser.onrender.com/columns', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "error") {
+                    alert("Ошибка: " + data.message);
+                    return;
+                }
+                let columns = data.columns;
+                let column1 = document.getElementById('column1');
+                let column2 = document.getElementById('column2');
+                column1.innerHTML = "";
+                column2.innerHTML = "";
+
+                columns.forEach(col => {
+                    let option1 = document.createElement("option");
+                    option1.value = col;
+                    option1.textContent = col;
+                    column1.appendChild(option1);
+
+                    let option2 = document.createElement("option");
+                    option2.value = col;
+                    option2.textContent = col;
+                    column2.appendChild(option2);
+                });
+            })
+            .catch(error => console.error("Ошибка получения колонок:", error));
+        });
+
+        document.getElementById('uploadForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            let formData = new FormData();
+            formData.append('file', document.getElementById('fileInput').files[0]);
+            formData.append('column1', document.getElementById('column1').value);
+            formData.append('column2', document.getElementById('column2').value);
+
             document.getElementById("loading").style.display = "block";
-        }
+
+            fetch('https://bitrix-price-parser.onrender.com/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.blob())
+            .then(blob => {
+                document.getElementById("loading").style.display = "none";
+                let url = window.URL.createObjectURL(blob);
+                let a = document.createElement('a');
+                a.href = url;
+                a.download = "Результаты анализа.xlsx";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            })
+            .catch(error => console.error("Ошибка загрузки файла:", error));
+        });
     </script>
 </body>
 </html>
