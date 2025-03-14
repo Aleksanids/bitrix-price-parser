@@ -10,12 +10,8 @@ import time
 import logging
 import uuid
 
-# Инициализация Flask-приложения
 app = Flask(__name__)
 executor = ThreadPoolExecutor(max_workers=10)
-
-# Настройки логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Пути для хранения файлов
 db_path = "price_cache.db"
@@ -24,17 +20,9 @@ result_folder = "results"
 os.makedirs(upload_folder, exist_ok=True)
 os.makedirs(result_folder, exist_ok=True)
 
-# Главная страница (тестовый ответ)
-@app.route('/')
-def home():
-    return "Flask-приложение работает! 🚀"
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Страница с формой загрузки файла
-@app.route('/form')
-def upload_form():
-    return render_template("upload.html")
-
-# Создание базы данных для кеша цен
+# Создаём базу данных для кеша цен
 def init_db():
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
@@ -47,6 +35,16 @@ def init_db():
         ''')
         conn.commit()
 
+# Главная страница с инструкцией для Битрикс24
+@app.route('/')
+def home():
+    return render_template("index.html")
+
+# Страница загрузки файла
+@app.route('/form')
+def upload_form():
+    return render_template("upload.html")
+
 # Функция парсинга цен с сайтов
 def get_price_from_sites(article):
     sites = {
@@ -57,6 +55,7 @@ def get_price_from_sites(article):
 
     headers = {"User-Agent": "Mozilla/5.0"}
     results = []
+    
     for store, url in sites.items():
         try:
             response = requests.get(url, headers=headers, timeout=10)
@@ -69,16 +68,19 @@ def get_price_from_sites(article):
         except Exception as e:
             logging.error(f"Ошибка при парсинге {store}: {e}")
         time.sleep(0.3)
+    
     return results if results else None
 
-# Проверка и обновление кеша
+# Проверка кеша и обновление цен
 def check_and_update_price(article):
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT prices, last_updated FROM prices_cache WHERE article = ?", (article,))
         row = cursor.fetchone()
+        
         if row and pd.Timestamp(row[1]) >= pd.Timestamp.now() - pd.Timedelta(days=7):
             return json.loads(row[0])
+
         prices = get_price_from_sites(article)
         if prices:
             cursor.execute("REPLACE INTO prices_cache (article, prices, last_updated) VALUES (?, ?, CURRENT_TIMESTAMP)",
