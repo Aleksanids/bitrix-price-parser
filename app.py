@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from flask import Flask, request, send_file, jsonify
+from flask import Flask, request, send_file, jsonify, render_template
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sqlite3
 import requests
@@ -14,18 +14,25 @@ import uuid
 app = Flask(__name__)
 executor = ThreadPoolExecutor(max_workers=10)
 
+# Настройки логирования
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Пути для хранения файлов
 db_path = "price_cache.db"
 upload_folder = "uploads"
 result_folder = "results"
 os.makedirs(upload_folder, exist_ok=True)
 os.makedirs(result_folder, exist_ok=True)
 
-# Главная страница (тестовое сообщение)
+# Главная страница (тестовый ответ)
 @app.route('/')
 def home():
     return "Flask-приложение работает! 🚀"
+
+# Страница с формой загрузки файла
+@app.route('/form')
+def upload_form():
+    return render_template("upload.html")
 
 # Создание базы данных для кеша цен
 def init_db():
@@ -79,15 +86,21 @@ def check_and_update_price(article):
             conn.commit()
         return prices
 
+# Обработчик загрузки файлов
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    file = request.files.get('file')
-    if file:
-        file_id = str(uuid.uuid4())
-        file_path = os.path.join(upload_folder, f"{file_id}.xlsx")
-        file.save(file_path)
-        return process_excel(file_path, file_id)
-    return jsonify({"status": "error", "message": "No file uploaded"}), 400
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file uploaded"}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "No selected file"}), 400
+
+    file_id = str(uuid.uuid4())
+    file_path = os.path.join(upload_folder, f"{file_id}.xlsx")
+    file.save(file_path)
+
+    return process_excel(file_path, file_id)
 
 # Обработка Excel-файла
 def process_excel(file_path, file_id):
