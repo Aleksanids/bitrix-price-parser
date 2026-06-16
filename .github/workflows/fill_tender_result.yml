@@ -1,0 +1,45 @@
+name: Fill Bitrix24 Tender Result
+
+on:
+  workflow_dispatch:
+    inputs:
+      payload_json:
+        description: 'Structured tender result JSON from ChatGPT'
+        required: true
+        type: string
+      mode:
+        description: 'Run mode: dry_run or update. First launches must use dry_run.'
+        required: true
+        default: 'dry_run'
+        type: choice
+        options:
+          - dry_run
+          - update
+
+permissions:
+  contents: read
+
+jobs:
+  fill-tender-result:
+    name: Validate and fill Bitrix24 tender result
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate payload and run handler
+        env:
+          BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
+          PAYLOAD_JSON: ${{ inputs.payload_json }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          python bitrix_tender_results/scripts/fill_tender_result.py \
+            --payload-json "$PAYLOAD_JSON" \
+            --mode "$MODE"
