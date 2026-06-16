@@ -1,13 +1,12 @@
 {
   "mode": "update",
-  "procurement_number": "0848300048426000189",
-  "winner_name": "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ \"СВМ ГРУПП\"",
-  "winner_price": 2336391535.50,
-  "winner_offer_price": 2336391535.50,
+  "procurement_number": "0848300064126000165",
+  "winner_name": "Васильев Никита Вячеславич",
+  "winner_price": 950562306.07,
+  "winner_offer_price": 950562306.07,
   "participants_count": 2,
   "result_status": "ok",
   "confidence": "high",
   "price_basis": "participant_offer_total_unit_price",
-  "allow_overwrite": false,
-  "comment": "Данные извлечены ChatGPT из HTML ЕИС по закупке 0848300048426000189: победитель/поставщик ООО \"СВМ ГРУПП\", предложение победителя 2 336 391 535,50, подано 2 заявки. Сделка определяется по номеру закупки; после заполнения 3 аналитических полей при пустом UF_CRM_1689581836 отдельным шагом отправляется STAGE_ID=29."
+  "allow_overwrite": false
 }
