@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Bitrix24 Tender Result Field Mapping",
+  "title": "Bitrix24 Tender Result Three-Field Mapping",
   "type": "object",
   "additionalProperties": false,
-  "required": ["portal", "entityTypeId", "categoryId", "stages", "fields", "automation"],
+  "required": ["portal", "entityTypeId", "categoryId", "fields", "automation"],
   "properties": {
     "portal": {
       "type": "string",
@@ -17,45 +17,18 @@
       "type": "integer",
       "minimum": 0
     },
-    "stages": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
-      "required": [
-        "tenders_selected",
-        "analysis",
-        "approval",
-        "auction",
-        "final_protocol",
-        "contract_conclusion",
-        "appeal",
-        "winner_tracking",
-        "analytics_result"
-      ]
-    },
     "fields": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "responsible_tender_specialist_for_bid",
-        "procedure_refusal_or_loss_reason",
-        "final_protocol_url",
         "winner_name_analytics",
         "winner_price_analytics",
-        "reduction_percent_analytics",
-        "participants_count_analytics",
-        "our_place_analytics"
+        "participants_count_analytics"
       ],
       "properties": {
-        "responsible_tender_specialist_for_bid": {"type": "string"},
-        "procedure_refusal_or_loss_reason": {"type": "string"},
-        "final_protocol_url": {"type": "string"},
         "winner_name_analytics": {"type": "string"},
         "winner_price_analytics": {"type": "string"},
-        "reduction_percent_analytics": {"type": "string"},
-        "participants_count_analytics": {"type": "string"},
-        "our_place_analytics": {"type": "string"}
+        "participants_count_analytics": {"type": "string"}
       }
     },
     "automation": {
@@ -63,17 +36,11 @@
       "additionalProperties": false,
       "required": [
         "default_mode",
-        "allow_overwrite_default",
-        "require_target_stage_id_for_stage_change",
-        "write_comment",
-        "close_task_after_success"
+        "allow_overwrite_default"
       ],
       "properties": {
         "default_mode": {"type": "string", "enum": ["dry_run", "update"]},
-        "allow_overwrite_default": {"type": "boolean"},
-        "require_target_stage_id_for_stage_change": {"type": "boolean"},
-        "write_comment": {"type": "boolean"},
-        "close_task_after_success": {"type": "boolean"}
+        "allow_overwrite_default": {"type": "boolean"}
       }
     }
   }
