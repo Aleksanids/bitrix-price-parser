@@ -5,7 +5,16 @@
   "fields": {
     "winner_name_analytics": "UF_CRM_1693464904935",
     "winner_price_analytics": "UF_CRM_1726788197",
-    "participants_count_analytics": "UF_CRM_1751272530"
+    "participants_count_analytics": "UF_CRM_1751272530",
+    "tender_specialist_to": "UF_CRM_1689581836"
+  },
+  "analytics_stage": {
+    "category_id": 0,
+    "stage_id": "29"
+  },
+  "deal_search": {
+    "title_contains_procurement_number": true,
+    "procurement_number_fields": []
   },
   "automation": {
     "default_mode": "dry_run",
