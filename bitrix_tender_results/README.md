@@ -1,22 +1,32 @@
 # Bitrix24 Tender Result Automation
 
-MVP-модуль для безопасного заполнения блока **«Результаты процедуры»** в сделке Bitrix24 по результатам анализа протокола закупки.
+MVP-модуль для безопасного заполнения блока **«Результаты процедуры»** в сделке Bitrix24 по результатам анализа протокола закупки и/или страницы результатов определения поставщика ЕИС.
 
 ## Назначение
 
-Сценарий MVP:
+Основной сценарий MVP:
+
+```text
+Номер извещения ЕИС
+→ GitHub Actions запускает сборщик collect_eis_result.py
+→ сборщик открывает supplier-results.html на zakupki.gov.ru
+→ формирует структурированный JSON
+→ JSON проверяется пользователем/ChatGPT
+→ fill_tender_result.py делает dry_run или update в Bitrix24
+```
+
+Дополнительный ручной сценарий:
 
 ```text
 Пользователь вручную передает протокол процедуры в ChatGPT
 → ChatGPT анализирует протокол
 → ChatGPT формирует структурированный JSON
-→ GitHub Actions запускает обработчик
-→ Python-скрипт валидирует payload
+→ GitHub Actions запускает fill_tender_result.py
 → в режиме dry_run показывает план обновления
 → в режиме update обновляет одну сделку Bitrix24 через REST
 ```
 
-На первом этапе модуль не парсит ЕИС, РТС, ЭТП и другие площадки автоматически.
+На первом этапе модуль не выполняет массовый парсинг ЕИС, РТС, ЭТП и других площадок.
 
 ## Важные ограничения безопасности
 
@@ -35,10 +45,13 @@ MVP-модуль для безопасного заполнения блока *
 ## Структура
 
 ```text
+.github/workflows/collect_eis_result.yml
 .github/workflows/fill_tender_result.yml
+bitrix_tender_results/scripts/collect_eis_result.py
 bitrix_tender_results/scripts/fill_tender_result.py
 bitrix_tender_results/config/bitrix_fields.example.json
 bitrix_tender_results/config/bitrix_fields.schema.json
+bitrix_tender_results/examples/collect_eis_result_input_0873200005426000019.example.json
 bitrix_tender_results/examples/tender_result_payload.example.json
 bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
 bitrix_tender_results/README.md
@@ -66,7 +79,7 @@ https://allians-express.bitrix24.ru/rest/.../.../
 
 Webhook нельзя публиковать в коде, README, issues, pull requests или чате.
 
-## Настройка конфигурации
+## Настройка конфигурации Bitrix24
 
 Скопировать пример:
 
@@ -85,6 +98,59 @@ cp bitrix_tender_results/config/bitrix_fields.example.json bitrix_tender_results
 - `our_place_analytics`
 - `final_protocol_url`
 - `procedure_refusal_or_loss_reason`
+
+## Workflow 1: сбор результата из ЕИС
+
+Workflow:
+
+```text
+Collect EIS Tender Result
+```
+
+Поля запуска:
+
+- `procurement_number` — номер извещения ЕИС;
+- `deal_id` — ID сделки Bitrix24, необязательно для сбора, но нужно для итогового payload;
+- `task_id` — ID задачи Bitrix24, необязательно;
+- `run_fill` — запускать ли сразу обработчик Bitrix24 после сбора;
+- `fill_mode` — `dry_run` или `update` для обработчика Bitrix24.
+
+Безопасный первый запуск:
+
+```text
+procurement_number = 0873200005426000019
+deal_id = 15096
+task_id = 42712
+run_fill = false
+fill_mode = dry_run
+```
+
+Результат workflow:
+
+```text
+bitrix_tender_results/out/collected_tender_result.json
+```
+
+Этот JSON также прикладывается как artifact GitHub Actions.
+
+## Workflow 2: заполнение Bitrix24 по готовому JSON
+
+Workflow:
+
+```text
+Fill Bitrix24 Tender Result
+```
+
+Поля запуска:
+
+- `payload_json` — JSON результата процедуры;
+- `mode` — `dry_run` или `update`.
+
+Первый запуск делать только так:
+
+```text
+mode = dry_run
+```
 
 ## Особые процедуры с ценой за единицу / фиксированной ценой контракта
 
@@ -126,25 +192,6 @@ cp bitrix_tender_results/config/bitrix_fields.example.json bitrix_tender_results
 bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
 ```
 
-## Ручной запуск GitHub Actions
-
-Workflow:
-
-```text
-Fill Bitrix24 Tender Result
-```
-
-Поля запуска:
-
-- `payload_json` — JSON результата процедуры;
-- `mode` — `dry_run` или `update`.
-
-Первый запуск делать только так:
-
-```text
-mode = dry_run
-```
-
 ## Реальная запись в Bitrix24
 
 Реальная запись допускается только если одновременно:
@@ -157,9 +204,17 @@ mode = dry_run
 - поля сделки не заполнены либо `allow_overwrite = true`;
 - если меняется стадия, `target_stage_id` указан явно.
 
-## Тестовый payload
+Для текущего MVP стадия не меняется, потому в payload нужно оставлять:
 
-Общий пример находится здесь:
+```json
+{
+  "target_stage_id": ""
+}
+```
+
+## Тестовые примеры
+
+Общий пример payload:
 
 ```text
 bitrix_tender_results/examples/tender_result_payload.example.json
@@ -169,6 +224,12 @@ bitrix_tender_results/examples/tender_result_payload.example.json
 
 ```text
 bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
+```
+
+Пример входных данных для workflow сбора:
+
+```text
+bitrix_tender_results/examples/collect_eis_result_input_0873200005426000019.example.json
 ```
 
 ## Статусы результата
