@@ -2,6 +2,7 @@
   {
     "procurement_number": "0873200005426000019",
     "deal_id": 15096,
-    "task_id": 42712
+    "task_id": 42712,
+    "trigger": "retry_with_artifact_2026_06_16_01"
   }
 ]
