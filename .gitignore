@@ -13,3 +13,4 @@ venv/
 bitrix_tender_results/config/bitrix_fields.local.json
 bitrix_tender_results/examples/*.local.json
 bitrix_tender_results/tmp/
+bitrix_tender_results/out/
