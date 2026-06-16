@@ -16,7 +16,6 @@ import json
 import os
 import sys
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
@@ -52,12 +51,7 @@ PAYLOAD_TO_CONFIG_FIELD = {
     "our_place": "our_place_analytics",
 }
 
-REQUIRED_PAYLOAD_FIELDS = [
-    "deal_id",
-    "procurement_number",
-    "result_status",
-    "mode",
-]
+REQUIRED_PAYLOAD_FIELDS = ["deal_id", "procurement_number", "result_status", "mode"]
 
 
 def eprint(message: str) -> None:
@@ -216,12 +210,17 @@ def bitrix_url(webhook_url: str, method: str) -> str:
 
 
 def bitrix_call(webhook_url: str, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    """Call Bitrix24 REST webhook with JSON body.
+
+    The webhook itself is never printed. Error text may include Bitrix24 response,
+    but not the webhook URL.
+    """
     url = bitrix_url(webhook_url, method)
-    data = urllib.parse.urlencode({"json": json.dumps(params, ensure_ascii=False)}).encode("utf-8")
+    data = json.dumps(params, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={"Content-Type": "application/json; charset=utf-8"},
         method="POST",
     )
     try:
@@ -240,11 +239,7 @@ def bitrix_call(webhook_url: str, method: str, params: Dict[str, Any]) -> Dict[s
 
 
 def get_existing_deal_fields(webhook_url: str, entity_type_id: int, deal_id: int) -> Dict[str, Any]:
-    response = bitrix_call(
-        webhook_url,
-        "crm.item.get",
-        {"entityTypeId": entity_type_id, "id": deal_id},
-    )
+    response = bitrix_call(webhook_url, "crm.item.get", {"entityTypeId": entity_type_id, "id": deal_id})
     item = response.get("result", {}).get("item")
     if not isinstance(item, dict):
         raise RuntimeError("Bitrix24 crm.item.get returned unexpected response")
@@ -265,10 +260,8 @@ def validate_update_mode(payload: Dict[str, Any], config: Dict[str, Any], update
 
     if payload.get("result_status") != UPDATE_ALLOWED_STATUS:
         errors.append("update mode is allowed only when result_status = ok")
-
     if not str(payload.get("winner_name") or "").strip():
         errors.append("update mode requires winner_name")
-
     if payload.get("winner_price") in (None, ""):
         errors.append("update mode requires winner_price")
 
@@ -299,6 +292,23 @@ def print_plan(payload: Dict[str, Any], update_fields: Dict[str, Any], config_pa
             print(f"  - {field_name}: {value}")
     print("\nComment preview:")
     print(build_comment(payload))
+
+
+def add_timeline_comment_if_enabled(webhook_url: str, payload: Dict[str, Any], config: Dict[str, Any]) -> None:
+    if not bool(config.get("automation", {}).get("write_comment", True)):
+        return
+    bitrix_call(
+        webhook_url,
+        "crm.timeline.comment.add",
+        {
+            "fields": {
+                "ENTITY_ID": int(payload["deal_id"]),
+                "ENTITY_TYPE": "deal",
+                "COMMENT": build_comment(payload),
+            }
+        },
+    )
+    print("Timeline comment added.")
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -356,14 +366,12 @@ def main(argv: Iterable[str] | None = None) -> int:
         response = bitrix_call(
             webhook_url,
             "crm.item.update",
-            {
-                "entityTypeId": int(config["entityTypeId"]),
-                "id": int(payload["deal_id"]),
-                "fields": update_fields,
-            },
+            {"entityTypeId": int(config["entityTypeId"]), "id": int(payload["deal_id"]), "fields": update_fields},
         )
-        print("\nBitrix24 update completed.")
+        print("\nBitrix24 deal update completed.")
         print(json.dumps(response.get("result", {}), ensure_ascii=False, indent=2))
+
+        add_timeline_comment_if_enabled(webhook_url, payload, config)
         return 0
 
     except json.JSONDecodeError as exc:
