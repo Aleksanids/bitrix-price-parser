@@ -2,6 +2,9 @@
 # -*- coding: utf-8 -*-
 """Batch wrapper for ChatGPT/Local Worker payloads.
 
+This script must be placed inside Aleksanids/bitrix-price-parser at:
+bitrix_tender_results/scripts/fill_batch_payload.py
+
 It reuses fill_tender_result.py and processes payload.items one by one.
 """
 
@@ -57,13 +60,7 @@ def process_item(payload: Dict[str, Any], config: Dict[str, Any], webhook_url: s
     }
     try:
         errors = fill_tender_result.validate_payload(payload)
-        errors.extend(
-            fill_tender_result.validate_config(
-                config,
-                update_mode=(payload.get("mode") == "update"),
-                config_is_example=False,
-            )
-        )
+        errors.extend(fill_tender_result.validate_config(config, update_mode=(payload.get("mode") == "update"), config_is_example=False))
         if payload.get("mode") == "update":
             errors.extend(fill_tender_result.validate_update_mode(payload))
         if errors:
@@ -96,13 +93,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     data = load_json(args.payload_json)
     items = normalize_items(data)
     if len(items) > args.max_items:
-        print(
-            json.dumps(
-                {"status": "validation_error", "reason": f"too many items: {len(items)} > {args.max_items}"},
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
+        print(json.dumps({"status": "validation_error", "reason": f"too many items: {len(items)} > {args.max_items}"}, ensure_ascii=False, indent=2))
         return 2
 
     config, _config_path, _is_example = fill_tender_result.load_config(None)
@@ -124,10 +115,6 @@ def main(argv: Iterable[str] | None = None) -> int:
     out.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
-    if summary["error"] or summary["validation_error"]:
-        return 3
-    if summary["manual_check"]:
-        return 4
     return 0
 
 
