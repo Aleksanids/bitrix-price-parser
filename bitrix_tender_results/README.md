@@ -29,6 +29,7 @@ MVP-модуль для безопасного заполнения блока *
 - Удаление сделок и задач запрещено.
 - Закрытие задач на MVP отключено.
 - Смена стадии разрешена только при явно указанном `target_stage_id`.
+- Если `target_stage_id` пустой, стадия не меняется.
 - Заполненные поля не перезаписываются без `allow_overwrite = true`.
 
 ## Структура
@@ -39,6 +40,7 @@ bitrix_tender_results/scripts/fill_tender_result.py
 bitrix_tender_results/config/bitrix_fields.example.json
 bitrix_tender_results/config/bitrix_fields.schema.json
 bitrix_tender_results/examples/tender_result_payload.example.json
+bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
 bitrix_tender_results/README.md
 ```
 
@@ -84,6 +86,46 @@ cp bitrix_tender_results/config/bitrix_fields.example.json bitrix_tender_results
 - `final_protocol_url`
 - `procedure_refusal_or_loss_reason`
 
+## Особые процедуры с ценой за единицу / фиксированной ценой контракта
+
+Для части процедур 44-ФЗ цена контракта может быть фиксированной, а победитель определяется по предложению участника по единичным расценкам или суммарному предложению по единичным позициям.
+
+В таких случаях нельзя автоматически считать снижение по формуле:
+
+```text
+((НМЦК - предложение участника) / НМЦК) * 100
+```
+
+Такой расчет даст некорректный результат, потому что `НМЦК/цена контракта` и `предложение участника` относятся к разным ценовым базам.
+
+Для таких процедур использовать поля payload:
+
+```json
+{
+  "nmck": 550000.0,
+  "contract_price": 550000.0,
+  "price_basis": "participant_offer_unit_price",
+  "auto_calculate_reduction": false,
+  "winner_price": 795073736.0,
+  "winner_offer_price": 795073736.0,
+  "reduction_percent": null
+}
+```
+
+Правило для Bitrix24:
+
+```text
+Поле «Цена победителя - аналитика» заполняется значением предложения участника.
+Цена контракта фиксируется в комментарии/техническом результате.
+Процент снижения не рассчитывается автоматически, если price_basis != contract_price.
+```
+
+Пример для закупки `0873200005426000019` находится здесь:
+
+```text
+bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
+```
+
 ## Ручной запуск GitHub Actions
 
 Workflow:
@@ -110,35 +152,23 @@ mode = dry_run
 - `mode = update`;
 - GitHub Secret `BITRIX_WEBHOOK_URL` добавлен;
 - `result_status = ok`;
-- заполнены `deal_id`, `procurement_number`, `winner_name`, `winner_price`;
+- заполнены `deal_id`, `procurement_number`, `winner_name` и `winner_price` либо `winner_offer_price`;
 - нет признаков `manual_check`, `multi_lot`, `cancelled`, `price_not_found`, `winner_not_found`;
 - поля сделки не заполнены либо `allow_overwrite = true`;
 - если меняется стадия, `target_stage_id` указан явно.
 
 ## Тестовый payload
 
-Пример находится здесь:
+Общий пример находится здесь:
 
 ```text
 bitrix_tender_results/examples/tender_result_payload.example.json
 ```
 
-Тестовая сделка:
+Специальный пример по закупке `0873200005426000019`:
 
 ```text
-16438
-```
-
-Тестовая закупка:
-
-```text
-0848600002726000322
-```
-
-НМЦК:
-
-```text
-1839950.00
+bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
 ```
 
 ## Статусы результата
