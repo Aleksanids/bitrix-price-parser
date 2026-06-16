@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/chatgpt_payloads/current_payload.json'
+  workflow_dispatch:
 
 permissions:
   contents: read
