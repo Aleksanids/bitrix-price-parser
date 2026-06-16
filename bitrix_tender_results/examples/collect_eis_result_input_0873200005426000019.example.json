@@ -1,0 +1,15 @@
+{
+  "procurement_number": "0873200005426000019",
+  "deal_id": 15096,
+  "task_id": 42712,
+  "run_fill": false,
+  "fill_mode": "dry_run",
+  "expected_behavior": [
+    "Open EIS supplier-results page for the procurement number.",
+    "Collect winner/supplier name, participant offer price, contract price, protocol information and participants count.",
+    "Save collected JSON as workflow artifact.",
+    "Do not change Bitrix24 deal stage.",
+    "Do not close Bitrix24 task.",
+    "Do not update Bitrix24 unless run_fill=true and fill_mode=update are explicitly selected."
+  ]
+}
