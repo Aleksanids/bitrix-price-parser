@@ -1,0 +1,48 @@
+name: ChatGPT Batch Payload to Bitrix
+
+on:
+  push:
+    paths:
+      - '.github/chatgpt_payloads/batch_payload.json'
+  workflow_dispatch:
+    inputs:
+      max_items:
+        description: 'Safety limit for one run'
+        required: true
+        default: '50'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  fill-from-batch-payload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Process batch payload
+        env:
+          BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
+          MAX_ITEMS: ${{ inputs.max_items || '50' }}
+        run: |
+          mkdir -p bitrix_tender_results/out
+          python bitrix_tender_results/scripts/fill_batch_payload.py \
+            --payload-json .github/chatgpt_payloads/batch_payload.json \
+            --max-items "$MAX_ITEMS" \
+            --output bitrix_tender_results/out/batch_payload_results.json
+
+      - name: Upload batch result artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-payload-results
+          path: bitrix_tender_results/out/batch_payload_results.json
+          if-no-files-found: error
