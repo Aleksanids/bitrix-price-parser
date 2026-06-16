@@ -1,0 +1,14 @@
+{
+  "portal": "allians-express.bitrix24.ru",
+  "entityTypeId": 2,
+  "categoryId": 0,
+  "fields": {
+    "winner_name_analytics": "UF_CRM_1693464904935",
+    "winner_price_analytics": "UF_CRM_1726788197",
+    "participants_count_analytics": "UF_CRM_1751272530"
+  },
+  "automation": {
+    "default_mode": "dry_run",
+    "allow_overwrite_default": false
+  }
+}
