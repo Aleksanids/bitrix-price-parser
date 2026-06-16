@@ -7,7 +7,8 @@ MVP rules:
 - no secrets are printed;
 - protocols are not stored in GitHub;
 - no task closing is performed in MVP;
-- stage changes are disabled unless target_stage_id is explicitly provided.
+- stage changes are disabled unless target_stage_id is explicitly provided;
+- procedure_refusal_or_loss_reason is written only when explicitly provided.
 """
 
 from __future__ import annotations
@@ -97,11 +98,7 @@ def normalize_price_basis(payload: Dict[str, Any]) -> str:
 
 
 def get_winner_price_for_bitrix(payload: Dict[str, Any]) -> Any:
-    """Return the value that should be written into Bitrix winner price field.
-
-    For standard procedures this is usually winner_price.
-    For unit-price procedures this may be winner_offer_price, while contract_price is fixed.
-    """
+    """Return the value that should be written into Bitrix winner price field."""
     winner_price = payload.get("winner_price")
     if winner_price not in (None, ""):
         return winner_price
@@ -221,7 +218,9 @@ def build_update_fields(payload: Dict[str, Any], config: Dict[str, Any]) -> Dict
             continue
         update_fields[bitrix_field] = value
 
-    reason_text = payload.get("procedure_refusal_or_loss_reason") or payload.get("comment")
+    # Do not write a technical comment into the refusal/loss reason field.
+    # This field is updated only if the payload explicitly contains procedure_refusal_or_loss_reason.
+    reason_text = payload.get("procedure_refusal_or_loss_reason")
     reason_field = fields_config.get("procedure_refusal_or_loss_reason")
     if reason_text and reason_field and DISCOVERY_MARKER not in reason_field:
         update_fields[reason_field] = reason_text
@@ -248,7 +247,7 @@ def build_comment(payload: Dict[str, Any]) -> str:
     }.get(price_basis, price_basis)
 
     return (
-        "Результат процедуры определен по протоколу.\n\n"
+        "Результат процедуры определен по данным ЕИС.\n\n"
         f"Закупка: {value_or_dash('procurement_number')}\n"
         f"Протокол: {value_or_dash('protocol_name')}\n"
         f"Дата протокола: {value_or_dash('protocol_date')}\n"
@@ -273,11 +272,6 @@ def bitrix_url(webhook_url: str, method: str) -> str:
 
 
 def bitrix_call(webhook_url: str, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
-    """Call Bitrix24 REST webhook with JSON body.
-
-    The webhook itself is never printed. Error text may include Bitrix24 response,
-    but not the webhook URL.
-    """
     url = bitrix_url(webhook_url, method)
     data = json.dumps(params, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
