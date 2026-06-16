@@ -31,9 +31,15 @@ jobs:
             --batch-json .github/triggers/task_42712.json \
             --mode update \
             --max-items 1 \
-            --output bitrix_tender_results/out/task_42712_result.json
+            --output bitrix_tender_results/out/task_42712_result.json || true
+          if [ -f bitrix_tender_results/out/task_42712_result.json ]; then
+            cat bitrix_tender_results/out/task_42712_result.json
+          else
+            echo '{"status":"no_result_file"}' > bitrix_tender_results/out/task_42712_result.json
+          fi
 
       - name: Upload result
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: task-42712-result
