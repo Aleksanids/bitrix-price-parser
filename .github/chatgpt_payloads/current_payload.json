@@ -1,0 +1,8 @@
+{
+  "mode": "dry_run",
+  "procurement_number": "0000000000000000000",
+  "result_status": "manual_check",
+  "confidence": "low",
+  "allow_overwrite": false,
+  "comment": "Placeholder. Replace this file with a real ChatGPT-extracted payload only after winner_name, winner_price, participants_count and procurement_number are known. Dry-run placeholder does not update Bitrix24."
+}
