@@ -1,0 +1,33 @@
+{
+  "portal": "allians-express.bitrix24.ru",
+  "entityTypeId": 2,
+  "categoryId": 0,
+  "stages": {
+    "tenders_selected": "NEW",
+    "analysis": "PREPARATION",
+    "approval": "31",
+    "auction": "FINAL_INVOICE",
+    "final_protocol": "20",
+    "contract_conclusion": "21",
+    "appeal": "22",
+    "winner_tracking": "TO_BE_DISCOVERED",
+    "analytics_result": "TO_BE_APPROVED"
+  },
+  "fields": {
+    "responsible_tender_specialist_for_bid": "UF_CRM_TO_BE_DISCOVERED",
+    "procedure_refusal_or_loss_reason": "UF_CRM_TO_BE_DISCOVERED",
+    "final_protocol_url": "UF_CRM_TO_BE_DISCOVERED",
+    "winner_name_analytics": "UF_CRM_TO_BE_DISCOVERED",
+    "winner_price_analytics": "UF_CRM_TO_BE_DISCOVERED",
+    "reduction_percent_analytics": "UF_CRM_TO_BE_DISCOVERED",
+    "participants_count_analytics": "UF_CRM_TO_BE_DISCOVERED",
+    "our_place_analytics": "UF_CRM_TO_BE_DISCOVERED"
+  },
+  "automation": {
+    "default_mode": "dry_run",
+    "allow_overwrite_default": false,
+    "require_target_stage_id_for_stage_change": true,
+    "write_comment": true,
+    "close_task_after_success": false
+  }
+}
