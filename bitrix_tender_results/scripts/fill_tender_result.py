@@ -90,6 +90,17 @@ def is_empty_value(value: Any) -> bool:
     return isinstance(value, str) and normalize_text(value) == ""
 
 
+def is_empty_employee_value(value: Any) -> bool:
+    """Bitrix employee fields can come back as '', None, false, 0, '0', [] or {}."""
+    if is_empty_value(value):
+        return True
+    if value is False or value == 0:
+        return True
+    if isinstance(value, str) and normalize_text(value).lower() in {"0", "false", "none", "null", "[]", "{}"}:
+        return True
+    return False
+
+
 def to_decimal(value: Any) -> Optional[Decimal]:
     if value in (None, ""):
         return None
@@ -406,16 +417,21 @@ def build_stage_update_after_result_fields(existing_item: Dict[str, Any], config
     if not fields_are_filled:
         return {}, False, "analytics_fields_not_filled:" + ",".join(missing_fields)
 
+    stage = config.get("analytics_stage", {})
+    target_stage_id = str(stage.get("stage_id", "29"))
+    current_stage_id = normalize_text(existing_item.get("STAGE_ID"))
+    if current_stage_id == target_stage_id:
+        return {}, False, "already_on_analytics_stage"
+
     to_field = config.get("fields", {}).get("tender_specialist_to")
     if not to_field:
         return {}, False, "tender_specialist_field_not_configured"
     if to_field not in existing_item:
         return {}, False, "tender_specialist_field_missing_in_deal_response"
-    if not is_empty_value(existing_item.get(to_field)):
+    if not is_empty_employee_value(existing_item.get(to_field)):
         return {}, False, "tender_specialist_to_filled"
 
-    stage = config.get("analytics_stage", {})
-    return {"STAGE_ID": str(stage.get("stage_id", "29"))}, True, "analytics_fields_filled_and_tender_specialist_to_empty"
+    return {"STAGE_ID": target_stage_id}, True, "analytics_fields_filled_and_tender_specialist_to_empty"
 
 
 def build_comment_preview(payload: Dict[str, Any]) -> str:
