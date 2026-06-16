@@ -1,0 +1,84 @@
+name: Collect EIS Tender Result
+
+on:
+  workflow_dispatch:
+    inputs:
+      procurement_number:
+        description: 'EIS notice/reg number, for example 0873200005426000019'
+        required: true
+        type: string
+      deal_id:
+        description: 'Bitrix24 deal ID. Optional for collection, required for fill workflow.'
+        required: false
+        type: string
+      task_id:
+        description: 'Bitrix24 task ID. Optional. Task is not closed by MVP.'
+        required: false
+        type: string
+      run_fill:
+        description: 'Also run Bitrix fill handler after collection'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      fill_mode:
+        description: 'Mode for fill handler. Use dry_run first.'
+        required: true
+        default: 'dry_run'
+        type: choice
+        options:
+          - dry_run
+          - update
+
+permissions:
+  contents: read
+
+jobs:
+  collect-eis-result:
+    name: Collect EIS result and prepare Bitrix payload
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Collect EIS result
+        env:
+          PROCUREMENT_NUMBER: ${{ inputs.procurement_number }}
+          DEAL_ID: ${{ inputs.deal_id }}
+          TASK_ID: ${{ inputs.task_id }}
+        run: |
+          mkdir -p bitrix_tender_results/out
+          CMD="python bitrix_tender_results/scripts/collect_eis_result.py --procurement-number \"$PROCUREMENT_NUMBER\" --output bitrix_tender_results/out/collected_tender_result.json --print-json"
+          if [ -n "$DEAL_ID" ]; then
+            CMD="$CMD --deal-id $DEAL_ID"
+          fi
+          if [ -n "$TASK_ID" ]; then
+            CMD="$CMD --task-id $TASK_ID"
+          fi
+          eval "$CMD"
+
+      - name: Upload collected JSON artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: collected-eis-result-${{ inputs.procurement_number }}
+          path: bitrix_tender_results/out/collected_tender_result.json
+          if-no-files-found: error
+
+      - name: Optional Bitrix fill handler
+        if: ${{ inputs.run_fill == 'true' }}
+        env:
+          BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
+          FILL_MODE: ${{ inputs.fill_mode }}
+        run: |
+          python bitrix_tender_results/scripts/fill_tender_result.py \
+            --payload-json bitrix_tender_results/out/collected_tender_result.json \
+            --mode "$FILL_MODE"
