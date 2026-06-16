@@ -1,0 +1,41 @@
+name: Run Task 42712 Once
+
+on:
+  push:
+    paths:
+      - '.github/triggers/task_42712.json'
+
+permissions:
+  contents: read
+
+jobs:
+  run-task-42712:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run batch for task 42712
+        env:
+          BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
+        run: |
+          mkdir -p bitrix_tender_results/out
+          python bitrix_tender_results/scripts/batch_44fz_results.py \
+            --batch-json .github/triggers/task_42712.json \
+            --mode update \
+            --max-items 1 \
+            --output bitrix_tender_results/out/task_42712_result.json
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-42712-result
+          path: bitrix_tender_results/out/task_42712_result.json
+          if-no-files-found: error
