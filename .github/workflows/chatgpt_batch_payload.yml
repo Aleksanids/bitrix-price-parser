@@ -9,7 +9,7 @@ on:
       max_items:
         description: 'Safety limit for one run'
         required: true
-        default: '50'
+        default: '200'
         type: string
 
 permissions:
@@ -18,7 +18,7 @@ permissions:
 jobs:
   fill-from-batch-payload:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -32,7 +32,7 @@ jobs:
       - name: Process batch payload
         env:
           BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
-          MAX_ITEMS: ${{ inputs.max_items || '50' }}
+          MAX_ITEMS: ${{ inputs.max_items || '200' }}
         run: |
           mkdir -p bitrix_tender_results/out
           python bitrix_tender_results/scripts/fill_batch_payload.py \
