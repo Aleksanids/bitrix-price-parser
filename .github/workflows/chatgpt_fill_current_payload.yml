@@ -28,5 +28,4 @@ jobs:
           BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
         run: |
           python bitrix_tender_results/scripts/fill_tender_result.py \
-            --payload-json .github/chatgpt_payloads/current_payload.json \
-            --mode update
+            --payload-json .github/chatgpt_payloads/current_payload.json
