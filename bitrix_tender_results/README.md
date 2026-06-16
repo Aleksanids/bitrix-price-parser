@@ -1,32 +1,78 @@
 # Bitrix24 Tender Result Automation
 
-MVP-модуль для безопасного заполнения блока **«Результаты процедуры»** в сделке Bitrix24 по результатам анализа протокола закупки и/или страницы результатов определения поставщика ЕИС.
+MVP-модуль для безопасного заполнения блока **«Результаты процедуры»** в сделке Bitrix24 по результатам анализа 44-ФЗ закупки в ЕИС.
 
-## Назначение
+## Текущий фокус
 
-Основной сценарий MVP:
+Сейчас настраиваем только **44-ФЗ**.
+
+223-ФЗ временно не подключаем к автоматическому заполнению, потому что для 223-ФЗ другая структура протоколов/договоров и нужен отдельный этап.
+
+## Основной сценарий MVP
 
 ```text
-Номер извещения ЕИС
-→ GitHub Actions запускает сборщик collect_eis_result.py
-→ сборщик открывает supplier-results.html на zakupki.gov.ru
+Номер извещения ЕИС 44-ФЗ
+→ GitHub Actions запускает сборщик collect_44fz_result.py
+→ сборщик открывает supplier-results.html и итоговый протокол на zakupki.gov.ru
 → формирует структурированный JSON
 → JSON проверяется пользователем/ChatGPT
 → fill_tender_result.py делает dry_run или update в Bitrix24
 ```
 
-Дополнительный ручной сценарий:
+## Источники данных 44-ФЗ
+
+### 1. Победитель / поставщик
+
+Основной источник:
 
 ```text
-Пользователь вручную передает протокол процедуры в ChatGPT
-→ ChatGPT анализирует протокол
-→ ChatGPT формирует структурированный JSON
-→ GitHub Actions запускает fill_tender_result.py
-→ в режиме dry_run показывает план обновления
-→ в режиме update обновляет одну сделку Bitrix24 через REST
+Вкладка ЕИС «Результаты определения поставщика, подрядчика, исполнителя»
+→ раздел «Сведения о заключенном контракте»
 ```
 
-На первом этапе модуль не выполняет массовый парсинг ЕИС, РТС, ЭТП и других площадок.
+Из этого блока берём:
+
+```text
+winner_name
+winner_inn
+contract_price
+contract_registry_number
+contract_publish_date
+```
+
+### 2. Количество заявок / участников
+
+Основной источник:
+
+```text
+Итоговый протокол
+```
+
+Из итогового протокола берём:
+
+```text
+participants_count
+protocol_name
+protocol_date
+protocol_url
+failed_procurement_reason, если есть
+```
+
+### 3. Цена победителя для Bitrix24
+
+Если на странице результатов есть:
+
+```text
+Предложение участника
+```
+
+то именно это значение заносится в поле Bitrix24:
+
+```text
+«Цена победителя - аналитика»
+```
+
+Цена контракта хранится отдельно как справочная величина в JSON и комментарии.
 
 ## Важные ограничения безопасности
 
@@ -47,6 +93,7 @@ MVP-модуль для безопасного заполнения блока *
 ```text
 .github/workflows/collect_eis_result.yml
 .github/workflows/fill_tender_result.yml
+bitrix_tender_results/scripts/collect_44fz_result.py
 bitrix_tender_results/scripts/collect_eis_result.py
 bitrix_tender_results/scripts/fill_tender_result.py
 bitrix_tender_results/config/bitrix_fields.example.json
@@ -56,6 +103,8 @@ bitrix_tender_results/examples/tender_result_payload.example.json
 bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
 bitrix_tender_results/README.md
 ```
+
+`collect_eis_result.py` оставлен как общий ранний сборщик. Рабочий 44-ФЗ контур использует `collect_44fz_result.py`.
 
 ## GitHub Secret
 
@@ -99,12 +148,12 @@ cp bitrix_tender_results/config/bitrix_fields.example.json bitrix_tender_results
 - `final_protocol_url`
 - `procedure_refusal_or_loss_reason`
 
-## Workflow 1: сбор результата из ЕИС
+## Workflow 1: сбор результата из ЕИС 44-ФЗ
 
 Workflow:
 
 ```text
-Collect EIS Tender Result
+Collect EIS 44-FZ Tender Result
 ```
 
 Поля запуска:
@@ -184,12 +233,6 @@ mode = dry_run
 Поле «Цена победителя - аналитика» заполняется значением предложения участника.
 Цена контракта фиксируется в комментарии/техническом результате.
 Процент снижения не рассчитывается автоматически, если price_basis != contract_price.
-```
-
-Пример для закупки `0873200005426000019` находится здесь:
-
-```text
-bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
 ```
 
 ## Реальная запись в Bitrix24
