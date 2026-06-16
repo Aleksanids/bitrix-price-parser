@@ -1,10 +1,10 @@
-name: Collect EIS Tender Result
+name: Collect EIS 44-FZ Tender Result
 
 on:
   workflow_dispatch:
     inputs:
       procurement_number:
-        description: 'EIS notice/reg number, for example 0873200005426000019'
+        description: '44-FZ EIS notice/reg number, for example 0873200005426000019'
         required: true
         type: string
       deal_id:
@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   collect-eis-result:
-    name: Collect EIS result and prepare Bitrix payload
+    name: Collect 44-FZ EIS result and prepare Bitrix payload
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -50,14 +50,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Collect EIS result
+      - name: Collect 44-FZ EIS result
         env:
           PROCUREMENT_NUMBER: ${{ inputs.procurement_number }}
           DEAL_ID: ${{ inputs.deal_id }}
           TASK_ID: ${{ inputs.task_id }}
         run: |
           mkdir -p bitrix_tender_results/out
-          CMD="python bitrix_tender_results/scripts/collect_eis_result.py --procurement-number \"$PROCUREMENT_NUMBER\" --output bitrix_tender_results/out/collected_tender_result.json --print-json"
+          CMD="python bitrix_tender_results/scripts/collect_44fz_result.py --procurement-number \"$PROCUREMENT_NUMBER\" --output bitrix_tender_results/out/collected_tender_result.json --print-json"
           if [ -n "$DEAL_ID" ]; then
             CMD="$CMD --deal-id $DEAL_ID"
           fi
@@ -69,7 +69,7 @@ jobs:
       - name: Upload collected JSON artifact
         uses: actions/upload-artifact@v4
         with:
-          name: collected-eis-result-${{ inputs.procurement_number }}
+          name: collected-44fz-eis-result-${{ inputs.procurement_number }}
           path: bitrix_tender_results/out/collected_tender_result.json
           if-no-files-found: error
 
