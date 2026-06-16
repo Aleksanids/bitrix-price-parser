@@ -1,0 +1,66 @@
+name: Batch 44-FZ Tender Results to Bitrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      batch_json:
+        description: 'JSON array with procurement_number, deal_id, task_id'
+        required: true
+        type: string
+      mode:
+        description: 'dry_run first, update only after review'
+        required: true
+        default: 'dry_run'
+        type: choice
+        options:
+          - dry_run
+          - update
+      max_items:
+        description: 'Safety limit for one run'
+        required: true
+        default: '20'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  batch-44fz-results:
+    name: Batch collect 44-FZ results and fill three Bitrix fields
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Write batch input
+        env:
+          BATCH_JSON: ${{ inputs.batch_json }}
+        run: |
+          mkdir -p bitrix_tender_results/out
+          printf '%s' "$BATCH_JSON" > bitrix_tender_results/out/batch_input.json
+
+      - name: Process batch
+        env:
+          BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
+        run: |
+          python bitrix_tender_results/scripts/batch_44fz_results.py \
+            --batch-json bitrix_tender_results/out/batch_input.json \
+            --mode "${{ inputs.mode }}" \
+            --max-items "${{ inputs.max_items }}" \
+            --output bitrix_tender_results/out/batch_results.json
+
+      - name: Upload batch result artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-44fz-results
+          path: |
+            bitrix_tender_results/out/batch_input.json
+            bitrix_tender_results/out/batch_results.json
+          if-no-files-found: error
