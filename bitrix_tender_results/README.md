@@ -1,27 +1,49 @@
 # Bitrix24 Tender Result Automation
 
-MVP-модуль для безопасного заполнения блока **«Результаты процедуры»** в сделке Bitrix24 по результатам анализа 44-ФЗ закупки в ЕИС.
+MVP-модуль для заполнения **только трёх полей** блока «Результаты процедуры» в сделке Bitrix24 по 44-ФЗ закупке из ЕИС.
 
 ## Текущий фокус
 
-Сейчас настраиваем только **44-ФЗ**.
+Сейчас автоматизируем только **44-ФЗ**.
 
-223-ФЗ временно не подключаем к автоматическому заполнению, потому что для 223-ФЗ другая структура протоколов/договоров и нужен отдельный этап.
+223-ФЗ временно не подключаем к автоматическому заполнению.
+
+## Поля Bitrix24, которые разрешено обновлять
+
+В текущем MVP обновляются строго только эти поля:
+
+```text
+Победитель тендера - аналитика
+Цена победителя - аналитика
+Количество участников - аналитика
+```
+
+Все остальные поля сделки не обновляются:
+
+```text
+Стадия сделки — не меняется.
+Задача — не закрывается.
+Ссылка на итоговый протокол — не заполняется.
+% снижения — не заполняется.
+Наше место — не заполняется.
+Причина отказа/проигрыша — не заполняется.
+Комментарий в timeline — не добавляется.
+```
 
 ## Основной сценарий MVP
 
 ```text
 Номер извещения ЕИС 44-ФЗ
-→ GitHub Actions запускает сборщик collect_44fz_result.py
+→ GitHub Actions запускает collect_44fz_result.py
 → сборщик открывает supplier-results.html и итоговый протокол на zakupki.gov.ru
-→ формирует структурированный JSON
-→ JSON проверяется пользователем/ChatGPT
-→ fill_tender_result.py делает dry_run или update в Bitrix24
+→ формирует JSON
+→ fill_tender_result.py делает dry_run или update
+→ в Bitrix24 уходят только 3 разрешённых поля
 ```
 
 ## Источники данных 44-ФЗ
 
-### 1. Победитель / поставщик
+### 1. Победитель
 
 Основной источник:
 
@@ -30,35 +52,13 @@ MVP-модуль для безопасного заполнения блока *
 → раздел «Сведения о заключенном контракте»
 ```
 
-Из этого блока берём:
+В CRM записывается:
 
 ```text
-winner_name
-winner_inn
-contract_price
-contract_registry_number
-contract_publish_date
+winner_name → Победитель тендера - аналитика
 ```
 
-### 2. Количество заявок / участников
-
-Основной источник:
-
-```text
-Итоговый протокол
-```
-
-Из итогового протокола берём:
-
-```text
-participants_count
-protocol_name
-protocol_date
-protocol_url
-failed_procurement_reason, если есть
-```
-
-### 3. Цена победителя для Bitrix24
+### 2. Цена победителя
 
 Если на странице результатов есть:
 
@@ -66,27 +66,37 @@ failed_procurement_reason, если есть
 Предложение участника
 ```
 
-то именно это значение заносится в поле Bitrix24:
+то именно это значение записывается в CRM:
 
 ```text
-«Цена победителя - аналитика»
+winner_price / winner_offer_price → Цена победителя - аналитика
 ```
 
-Цена контракта хранится отдельно как справочная величина в JSON и комментарии.
+Цена контракта остаётся справочной величиной в JSON и не записывается в отдельное поле CRM.
+
+### 3. Количество участников / заявок
+
+Основной источник:
+
+```text
+Итоговый протокол
+```
+
+В CRM записывается:
+
+```text
+participants_count → Количество участников - аналитика
+```
 
 ## Важные ограничения безопасности
 
-- Протоколы закупок не хранить в GitHub.
 - Webhook Bitrix24 не хранить в коде.
 - Webhook Bitrix24 не вставлять в чат.
-- Реальные обновления разрешены только при `mode = update`.
 - Режим по умолчанию — `dry_run`.
+- Реальное обновление только при `mode = update`.
 - Массовое обновление сделок запрещено.
-- Удаление сделок и задач запрещено.
-- Закрытие задач на MVP отключено.
-- Смена стадии разрешена только при явно указанном `target_stage_id`.
-- Если `target_stage_id` пустой, стадия не меняется.
 - Заполненные поля не перезаписываются без `allow_overwrite = true`.
+- В `crm.item.update` передаются только три разрешённых поля.
 
 ## Структура
 
@@ -94,7 +104,6 @@ failed_procurement_reason, если есть
 .github/workflows/collect_eis_result.yml
 .github/workflows/fill_tender_result.yml
 bitrix_tender_results/scripts/collect_44fz_result.py
-bitrix_tender_results/scripts/collect_eis_result.py
 bitrix_tender_results/scripts/fill_tender_result.py
 bitrix_tender_results/config/bitrix_fields.example.json
 bitrix_tender_results/config/bitrix_fields.schema.json
@@ -103,8 +112,6 @@ bitrix_tender_results/examples/tender_result_payload.example.json
 bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
 bitrix_tender_results/README.md
 ```
-
-`collect_eis_result.py` оставлен как общий ранний сборщик. Рабочий 44-ФЗ контур использует `collect_44fz_result.py`.
 
 ## GitHub Secret
 
@@ -128,25 +135,38 @@ https://allians-express.bitrix24.ru/rest/.../.../
 
 Webhook нельзя публиковать в коде, README, issues, pull requests или чате.
 
-## Настройка конфигурации Bitrix24
+## Конфигурация полей Bitrix24
 
-Скопировать пример:
+Создать файл:
 
-```bash
-cp bitrix_tender_results/config/bitrix_fields.example.json bitrix_tender_results/config/bitrix_fields.json
+```text
+bitrix_tender_results/config/bitrix_fields.json
 ```
 
-Затем заменить все значения `UF_CRM_TO_BE_DISCOVERED` на реальные коды пользовательских полей Bitrix24.
+На базе примера:
 
-Минимально нужно заполнить:
+```text
+bitrix_tender_results/config/bitrix_fields.example.json
+```
 
-- `winner_name_analytics`
-- `winner_price_analytics`
-- `reduction_percent_analytics`
-- `participants_count_analytics`
-- `our_place_analytics`
-- `final_protocol_url`
-- `procedure_refusal_or_loss_reason`
+Нужно указать реальные коды только трёх полей:
+
+```json
+{
+  "portal": "allians-express.bitrix24.ru",
+  "entityTypeId": 2,
+  "categoryId": 0,
+  "fields": {
+    "winner_name_analytics": "UF_CRM_...",
+    "winner_price_analytics": "UF_CRM_...",
+    "participants_count_analytics": "UF_CRM_..."
+  },
+  "automation": {
+    "default_mode": "dry_run",
+    "allow_overwrite_default": false
+  }
+}
+```
 
 ## Workflow 1: сбор результата из ЕИС 44-ФЗ
 
@@ -158,11 +178,13 @@ Collect EIS 44-FZ Tender Result
 
 Поля запуска:
 
-- `procurement_number` — номер извещения ЕИС;
-- `deal_id` — ID сделки Bitrix24, необязательно для сбора, но нужно для итогового payload;
-- `task_id` — ID задачи Bitrix24, необязательно;
-- `run_fill` — запускать ли сразу обработчик Bitrix24 после сбора;
-- `fill_mode` — `dry_run` или `update` для обработчика Bitrix24.
+```text
+procurement_number — номер извещения ЕИС
+deal_id — ID сделки Bitrix24
+task_id — ID задачи Bitrix24, справочно
+run_fill — запускать ли сразу заполнение Bitrix24
+fill_mode — dry_run / update
+```
 
 Безопасный первый запуск:
 
@@ -180,7 +202,7 @@ fill_mode = dry_run
 bitrix_tender_results/out/collected_tender_result.json
 ```
 
-Этот JSON также прикладывается как artifact GitHub Actions.
+JSON прикладывается как artifact GitHub Actions.
 
 ## Workflow 2: заполнение Bitrix24 по готовому JSON
 
@@ -192,8 +214,10 @@ Fill Bitrix24 Tender Result
 
 Поля запуска:
 
-- `payload_json` — JSON результата процедуры;
-- `mode` — `dry_run` или `update`.
+```text
+payload_json — JSON результата процедуры
+mode — dry_run / update
+```
 
 Первый запуск делать только так:
 
@@ -201,101 +225,44 @@ Fill Bitrix24 Tender Result
 mode = dry_run
 ```
 
-## Особые процедуры с ценой за единицу / фиксированной ценой контракта
-
-Для части процедур 44-ФЗ цена контракта может быть фиксированной, а победитель определяется по предложению участника по единичным расценкам или суммарному предложению по единичным позициям.
-
-В таких случаях нельзя автоматически считать снижение по формуле:
-
-```text
-((НМЦК - предложение участника) / НМЦК) * 100
-```
-
-Такой расчет даст некорректный результат, потому что `НМЦК/цена контракта` и `предложение участника` относятся к разным ценовым базам.
-
-Для таких процедур использовать поля payload:
-
-```json
-{
-  "nmck": 550000.0,
-  "contract_price": 550000.0,
-  "price_basis": "participant_offer_unit_price",
-  "auto_calculate_reduction": false,
-  "winner_price": 795073736.0,
-  "winner_offer_price": 795073736.0,
-  "reduction_percent": null
-}
-```
-
-Правило для Bitrix24:
-
-```text
-Поле «Цена победителя - аналитика» заполняется значением предложения участника.
-Цена контракта фиксируется в комментарии/техническом результате.
-Процент снижения не рассчитывается автоматически, если price_basis != contract_price.
-```
-
 ## Реальная запись в Bitrix24
 
 Реальная запись допускается только если одновременно:
 
-- `mode = update`;
-- GitHub Secret `BITRIX_WEBHOOK_URL` добавлен;
-- `result_status = ok`;
-- заполнены `deal_id`, `procurement_number`, `winner_name` и `winner_price` либо `winner_offer_price`;
-- нет признаков `manual_check`, `multi_lot`, `cancelled`, `price_not_found`, `winner_not_found`;
-- поля сделки не заполнены либо `allow_overwrite = true`;
-- если меняется стадия, `target_stage_id` указан явно.
+```text
+mode = update
+GitHub Secret BITRIX_WEBHOOK_URL добавлен
+result_status = ok
+winner_name заполнен
+winner_price или winner_offer_price заполнен
+participants_count заполнен
+поля сделки не заполнены либо allow_overwrite = true
+```
 
-Для текущего MVP стадия не меняется, потому в payload нужно оставлять:
+## Процедуры с ценой за единицу / фиксированной ценой контракта
+
+Если цена контракта фиксированная, а предложение участника относится к единичной/расчётной базе, то в CRM всё равно записывается:
+
+```text
+Цена победителя - аналитика = предложение участника
+```
+
+Например:
 
 ```json
 {
-  "target_stage_id": ""
+  "contract_price": 550000.0,
+  "winner_price": 795073736.0,
+  "winner_offer_price": 795073736.0,
+  "price_basis": "participant_offer_unit_price",
+  "auto_calculate_reduction": false
 }
 ```
 
-## Тестовые примеры
-
-Общий пример payload:
+В CRM при этом уйдут только:
 
 ```text
-bitrix_tender_results/examples/tender_result_payload.example.json
-```
-
-Специальный пример по закупке `0873200005426000019`:
-
-```text
-bitrix_tender_results/examples/tender_result_payload_0873200005426000019.example.json
-```
-
-Пример входных данных для workflow сбора:
-
-```text
-bitrix_tender_results/examples/collect_eis_result_input_0873200005426000019.example.json
-```
-
-## Статусы результата
-
-Разрешенные controlled statuses:
-
-```text
-ok
-manual_check
-no_winner
-cancelled
-failed_procurement
-multi_lot
-price_not_found
-winner_not_found
-protocol_not_final
-procurement_number_mismatch
-already_filled
-error
-```
-
-Автоматическое обновление сделки разрешено только при:
-
-```text
-result_status = ok
+winner_name
+winner_price
+participants_count
 ```
