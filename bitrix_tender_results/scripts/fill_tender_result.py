@@ -6,7 +6,8 @@ MVP rules:
 - update mode is allowed only for result_status=ok;
 - no secrets are printed;
 - protocols are not stored in GitHub;
-- no task closing is performed in MVP.
+- no task closing is performed in MVP;
+- stage changes are disabled unless target_stage_id is explicitly provided.
 """
 
 from __future__ import annotations
@@ -34,6 +35,15 @@ ALLOWED_STATUSES = {
     "procurement_number_mismatch",
     "already_filled",
     "error",
+}
+PRICE_BASIS_CONTRACT = "contract_price"
+PRICE_BASIS_PARTICIPANT_OFFER = "participant_offer_unit_price"
+ALLOWED_PRICE_BASIS = {
+    PRICE_BASIS_CONTRACT,
+    PRICE_BASIS_PARTICIPANT_OFFER,
+    "participant_offer_total_unit_price",
+    "unit_price_procedure",
+    "not_applicable",
 }
 UPDATE_ALLOWED_STATUS = "ok"
 DISCOVERY_MARKER = "TO_BE_DISCOVERED"
@@ -81,6 +91,23 @@ def load_config(path: Path | None) -> Tuple[Dict[str, Any], Path, bool]:
     return config, config_path, is_example
 
 
+def normalize_price_basis(payload: Dict[str, Any]) -> str:
+    price_basis = str(payload.get("price_basis") or PRICE_BASIS_CONTRACT).strip()
+    return price_basis if price_basis in ALLOWED_PRICE_BASIS else PRICE_BASIS_CONTRACT
+
+
+def get_winner_price_for_bitrix(payload: Dict[str, Any]) -> Any:
+    """Return the value that should be written into Bitrix winner price field.
+
+    For standard procedures this is usually winner_price.
+    For unit-price procedures this may be winner_offer_price, while contract_price is fixed.
+    """
+    winner_price = payload.get("winner_price")
+    if winner_price not in (None, ""):
+        return winner_price
+    return payload.get("winner_offer_price")
+
+
 def validate_payload(payload: Dict[str, Any]) -> List[str]:
     errors: List[str] = []
 
@@ -104,18 +131,31 @@ def validate_payload(payload: Dict[str, Any]) -> List[str]:
     if not procurement_number:
         errors.append("procurement_number must not be empty")
 
+    price_basis = str(payload.get("price_basis") or PRICE_BASIS_CONTRACT).strip()
+    if price_basis not in ALLOWED_PRICE_BASIS:
+        errors.append(f"Invalid price_basis: {price_basis!r}. Allowed: {sorted(ALLOWED_PRICE_BASIS)}")
+
+    for numeric_field in ("nmck", "contract_price", "winner_price", "winner_offer_price", "reduction_percent"):
+        value = payload.get(numeric_field)
+        if value in (None, ""):
+            continue
+        try:
+            numeric_value = float(value)
+        except (TypeError, ValueError):
+            errors.append(f"{numeric_field} must be numeric when provided")
+            continue
+        if numeric_field != "reduction_percent" and numeric_value < 0:
+            errors.append(f"{numeric_field} must not be negative")
+
     nmck = payload.get("nmck")
-    winner_price = payload.get("winner_price")
-    if payload.get("reduction_percent") is None and nmck not in (None, "") and winner_price not in (None, ""):
+    winner_price_for_bitrix = get_winner_price_for_bitrix(payload)
+    if payload.get("reduction_percent") is None and nmck not in (None, "") and winner_price_for_bitrix not in (None, ""):
         try:
             nmck_value = float(nmck)
-            winner_price_value = float(winner_price)
             if nmck_value <= 0:
                 errors.append("nmck must be greater than zero when reduction_percent is calculated")
-            elif winner_price_value < 0:
-                errors.append("winner_price must not be negative")
         except (TypeError, ValueError):
-            errors.append("nmck and winner_price must be numeric when provided")
+            pass
 
     return errors
 
@@ -123,12 +163,17 @@ def validate_payload(payload: Dict[str, Any]) -> List[str]:
 def calculate_reduction_if_needed(payload: Dict[str, Any]) -> None:
     if payload.get("reduction_percent") is not None:
         return
+    if payload.get("auto_calculate_reduction") is False:
+        return
+    if normalize_price_basis(payload) != PRICE_BASIS_CONTRACT:
+        return
+
     nmck = payload.get("nmck")
-    winner_price = payload.get("winner_price")
-    if nmck in (None, "") or winner_price in (None, ""):
+    winner_price_for_bitrix = get_winner_price_for_bitrix(payload)
+    if nmck in (None, "") or winner_price_for_bitrix in (None, ""):
         return
     nmck_value = float(nmck)
-    winner_price_value = float(winner_price)
+    winner_price_value = float(winner_price_for_bitrix)
     if nmck_value > 0:
         payload["reduction_percent"] = round(((nmck_value - winner_price_value) / nmck_value) * 100, 2)
 
@@ -157,12 +202,18 @@ def validate_config(config: Dict[str, Any], *, update_mode: bool, config_is_exam
     return errors
 
 
+def get_payload_value_for_update(payload_field: str, payload: Dict[str, Any]) -> Any:
+    if payload_field == "winner_price":
+        return get_winner_price_for_bitrix(payload)
+    return payload.get(payload_field)
+
+
 def build_update_fields(payload: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
     fields_config = config["fields"]
     update_fields: Dict[str, Any] = {}
 
     for payload_field, logical_config_field in PAYLOAD_TO_CONFIG_FIELD.items():
-        value = payload.get(payload_field)
+        value = get_payload_value_for_update(payload_field, payload)
         bitrix_field = fields_config.get(logical_config_field)
         if not bitrix_field or DISCOVERY_MARKER in bitrix_field:
             continue
@@ -187,6 +238,15 @@ def build_comment(payload: Dict[str, Any]) -> str:
         value = payload.get(key)
         return value if value not in (None, "") else "не указано"
 
+    price_basis = normalize_price_basis(payload)
+    price_basis_text = {
+        PRICE_BASIS_CONTRACT: "цена контракта / стандартная база",
+        PRICE_BASIS_PARTICIPANT_OFFER: "предложение участника по процедуре с фиксированной ценой контракта",
+        "participant_offer_total_unit_price": "суммарное предложение по единичным расценкам",
+        "unit_price_procedure": "процедура с ценой за единицу",
+        "not_applicable": "не применимо",
+    }.get(price_basis, price_basis)
+
     return (
         "Результат процедуры определен по протоколу.\n\n"
         f"Закупка: {value_or_dash('procurement_number')}\n"
@@ -194,8 +254,11 @@ def build_comment(payload: Dict[str, Any]) -> str:
         f"Дата протокола: {value_or_dash('protocol_date')}\n"
         f"Победитель: {value_or_dash('winner_name')}\n"
         f"ИНН победителя: {value_or_dash('winner_inn')}\n"
-        f"Цена победителя: {value_or_dash('winner_price')} руб.\n"
+        f"Цена для поля Bitrix 'Цена победителя - аналитика': {get_winner_price_for_bitrix(payload) if get_winner_price_for_bitrix(payload) not in (None, '') else 'не указано'} руб.\n"
+        f"Предложение участника: {value_or_dash('winner_offer_price')} руб.\n"
+        f"Цена контракта: {value_or_dash('contract_price')} руб.\n"
         f"НМЦК: {value_or_dash('nmck')} руб.\n"
+        f"База цены: {price_basis_text}\n"
         f"Снижение: {value_or_dash('reduction_percent')}%\n"
         f"Количество участников/заявок: {value_or_dash('participants_count')}\n"
         f"Наше место: {value_or_dash('our_place')}\n"
@@ -262,8 +325,8 @@ def validate_update_mode(payload: Dict[str, Any], config: Dict[str, Any], update
         errors.append("update mode is allowed only when result_status = ok")
     if not str(payload.get("winner_name") or "").strip():
         errors.append("update mode requires winner_name")
-    if payload.get("winner_price") in (None, ""):
-        errors.append("update mode requires winner_price")
+    if get_winner_price_for_bitrix(payload) in (None, ""):
+        errors.append("update mode requires winner_price or winner_offer_price")
 
     target_stage_id = str(payload.get("target_stage_id") or "").strip()
     require_stage = bool(config.get("automation", {}).get("require_target_stage_id_for_stage_change", True))
@@ -281,9 +344,11 @@ def print_plan(payload: Dict[str, Any], update_fields: Dict[str, Any], config_pa
     print(f"Mode: {mode}")
     print(f"Config: {config_path}")
     print(f"Deal ID: {payload.get('deal_id')}")
+    print(f"Task ID: {payload.get('task_id')}")
     print(f"Procurement number: {payload.get('procurement_number')}")
     print(f"Result status: {payload.get('result_status')}")
     print(f"Confidence: {payload.get('confidence')}")
+    print(f"Price basis: {normalize_price_basis(payload)}")
     print("\nFields planned for update:")
     if not update_fields:
         print("  - no fields")
