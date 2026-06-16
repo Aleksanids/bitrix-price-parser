@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Safe Bitrix24 tender result updater.
 
-MVP rules:
+MVP scope:
+- update only three Bitrix24 deal fields:
+  1) Победитель тендера - аналитика
+  2) Цена победителя - аналитика
+  3) Количество участников - аналитика
+- do not update stageId;
+- do not write timeline comments;
+- do not update protocol URL, reduction percent, our place, refusal/loss reason;
 - dry_run is the default and does not call Bitrix24 update methods;
 - update mode is allowed only for result_status=ok;
-- no secrets are printed;
-- protocols are not stored in GitHub;
-- no task closing is performed in MVP;
-- stage changes are disabled unless target_stage_id is explicitly provided;
-- procedure_refusal_or_loss_reason is written only when explicitly provided.
+- no secrets are printed.
 """
 
 from __future__ import annotations
@@ -37,11 +40,9 @@ ALLOWED_STATUSES = {
     "already_filled",
     "error",
 }
-PRICE_BASIS_CONTRACT = "contract_price"
-PRICE_BASIS_PARTICIPANT_OFFER = "participant_offer_unit_price"
 ALLOWED_PRICE_BASIS = {
-    PRICE_BASIS_CONTRACT,
-    PRICE_BASIS_PARTICIPANT_OFFER,
+    "contract_price",
+    "participant_offer_unit_price",
     "participant_offer_total_unit_price",
     "unit_price_procedure",
     "not_applicable",
@@ -53,13 +54,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG_PATH = ROOT / "config" / "bitrix_fields.json"
 EXAMPLE_CONFIG_PATH = ROOT / "config" / "bitrix_fields.example.json"
 
+# Hard MVP allow-list. Only these three logical fields may be written to Bitrix24.
 PAYLOAD_TO_CONFIG_FIELD = {
-    "protocol_url": "final_protocol_url",
     "winner_name": "winner_name_analytics",
     "winner_price": "winner_price_analytics",
-    "reduction_percent": "reduction_percent_analytics",
     "participants_count": "participants_count_analytics",
-    "our_place": "our_place_analytics",
 }
 
 REQUIRED_PAYLOAD_FIELDS = ["deal_id", "procurement_number", "result_status", "mode"]
@@ -92,17 +91,18 @@ def load_config(path: Path | None) -> Tuple[Dict[str, Any], Path, bool]:
     return config, config_path, is_example
 
 
-def normalize_price_basis(payload: Dict[str, Any]) -> str:
-    price_basis = str(payload.get("price_basis") or PRICE_BASIS_CONTRACT).strip()
-    return price_basis if price_basis in ALLOWED_PRICE_BASIS else PRICE_BASIS_CONTRACT
-
-
 def get_winner_price_for_bitrix(payload: Dict[str, Any]) -> Any:
-    """Return the value that should be written into Bitrix winner price field."""
+    """Return value for Bitrix field 'Цена победителя - аналитика'."""
     winner_price = payload.get("winner_price")
     if winner_price not in (None, ""):
         return winner_price
     return payload.get("winner_offer_price")
+
+
+def get_payload_value_for_update(payload_field: str, payload: Dict[str, Any]) -> Any:
+    if payload_field == "winner_price":
+        return get_winner_price_for_bitrix(payload)
+    return payload.get(payload_field)
 
 
 def validate_payload(payload: Dict[str, Any]) -> List[str]:
@@ -128,11 +128,12 @@ def validate_payload(payload: Dict[str, Any]) -> List[str]:
     if not procurement_number:
         errors.append("procurement_number must not be empty")
 
-    price_basis = str(payload.get("price_basis") or PRICE_BASIS_CONTRACT).strip()
+    price_basis = str(payload.get("price_basis") or "contract_price").strip()
     if price_basis not in ALLOWED_PRICE_BASIS:
         errors.append(f"Invalid price_basis: {price_basis!r}. Allowed: {sorted(ALLOWED_PRICE_BASIS)}")
 
-    for numeric_field in ("nmck", "contract_price", "winner_price", "winner_offer_price", "reduction_percent"):
+    numeric_fields = ("winner_price", "winner_offer_price", "participants_count")
+    for numeric_field in numeric_fields:
         value = payload.get(numeric_field)
         if value in (None, ""):
             continue
@@ -141,38 +142,10 @@ def validate_payload(payload: Dict[str, Any]) -> List[str]:
         except (TypeError, ValueError):
             errors.append(f"{numeric_field} must be numeric when provided")
             continue
-        if numeric_field != "reduction_percent" and numeric_value < 0:
+        if numeric_value < 0:
             errors.append(f"{numeric_field} must not be negative")
 
-    nmck = payload.get("nmck")
-    winner_price_for_bitrix = get_winner_price_for_bitrix(payload)
-    if payload.get("reduction_percent") is None and nmck not in (None, "") and winner_price_for_bitrix not in (None, ""):
-        try:
-            nmck_value = float(nmck)
-            if nmck_value <= 0:
-                errors.append("nmck must be greater than zero when reduction_percent is calculated")
-        except (TypeError, ValueError):
-            pass
-
     return errors
-
-
-def calculate_reduction_if_needed(payload: Dict[str, Any]) -> None:
-    if payload.get("reduction_percent") is not None:
-        return
-    if payload.get("auto_calculate_reduction") is False:
-        return
-    if normalize_price_basis(payload) != PRICE_BASIS_CONTRACT:
-        return
-
-    nmck = payload.get("nmck")
-    winner_price_for_bitrix = get_winner_price_for_bitrix(payload)
-    if nmck in (None, "") or winner_price_for_bitrix in (None, ""):
-        return
-    nmck_value = float(nmck)
-    winner_price_value = float(winner_price_for_bitrix)
-    if nmck_value > 0:
-        payload["reduction_percent"] = round(((nmck_value - winner_price_value) / nmck_value) * 100, 2)
 
 
 def validate_config(config: Dict[str, Any], *, update_mode: bool, config_is_example: bool) -> List[str]:
@@ -199,13 +172,8 @@ def validate_config(config: Dict[str, Any], *, update_mode: bool, config_is_exam
     return errors
 
 
-def get_payload_value_for_update(payload_field: str, payload: Dict[str, Any]) -> Any:
-    if payload_field == "winner_price":
-        return get_winner_price_for_bitrix(payload)
-    return payload.get(payload_field)
-
-
 def build_update_fields(payload: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]:
+    """Build Bitrix24 update payload with strict three-field allow-list."""
     fields_config = config["fields"]
     update_fields: Dict[str, Any] = {}
 
@@ -218,51 +186,21 @@ def build_update_fields(payload: Dict[str, Any], config: Dict[str, Any]) -> Dict
             continue
         update_fields[bitrix_field] = value
 
-    # Do not write a technical comment into the refusal/loss reason field.
-    # This field is updated only if the payload explicitly contains procedure_refusal_or_loss_reason.
-    reason_text = payload.get("procedure_refusal_or_loss_reason")
-    reason_field = fields_config.get("procedure_refusal_or_loss_reason")
-    if reason_text and reason_field and DISCOVERY_MARKER not in reason_field:
-        update_fields[reason_field] = reason_text
-
-    target_stage_id = str(payload.get("target_stage_id") or "").strip()
-    if target_stage_id:
-        update_fields["stageId"] = target_stage_id
-
     return update_fields
 
 
-def build_comment(payload: Dict[str, Any]) -> str:
+def build_comment_preview(payload: Dict[str, Any]) -> str:
     def value_or_dash(key: str) -> Any:
         value = payload.get(key)
         return value if value not in (None, "") else "не указано"
 
-    price_basis = normalize_price_basis(payload)
-    price_basis_text = {
-        PRICE_BASIS_CONTRACT: "цена контракта / стандартная база",
-        PRICE_BASIS_PARTICIPANT_OFFER: "предложение участника по процедуре с фиксированной ценой контракта",
-        "participant_offer_total_unit_price": "суммарное предложение по единичным расценкам",
-        "unit_price_procedure": "процедура с ценой за единицу",
-        "not_applicable": "не применимо",
-    }.get(price_basis, price_basis)
-
     return (
-        "Результат процедуры определен по данным ЕИС.\n\n"
+        "Предпросмотр результата процедуры.\n\n"
         f"Закупка: {value_or_dash('procurement_number')}\n"
-        f"Протокол: {value_or_dash('protocol_name')}\n"
-        f"Дата протокола: {value_or_dash('protocol_date')}\n"
         f"Победитель: {value_or_dash('winner_name')}\n"
-        f"ИНН победителя: {value_or_dash('winner_inn')}\n"
-        f"Цена для поля Bitrix 'Цена победителя - аналитика': {get_winner_price_for_bitrix(payload) if get_winner_price_for_bitrix(payload) not in (None, '') else 'не указано'} руб.\n"
-        f"Предложение участника: {value_or_dash('winner_offer_price')} руб.\n"
-        f"Цена контракта: {value_or_dash('contract_price')} руб.\n"
-        f"НМЦК: {value_or_dash('nmck')} руб.\n"
-        f"База цены: {price_basis_text}\n"
-        f"Снижение: {value_or_dash('reduction_percent')}%\n"
+        f"Цена победителя для Bitrix: {get_winner_price_for_bitrix(payload) if get_winner_price_for_bitrix(payload) not in (None, '') else 'не указано'}\n"
         f"Количество участников/заявок: {value_or_dash('participants_count')}\n"
-        f"Наше место: {value_or_dash('our_place')}\n"
-        f"Статус проверки: {value_or_dash('result_status')}\n"
-        f"Комментарий: {value_or_dash('comment')}"
+        "В Bitrix24 записываются только эти три поля. Остальные данные используются только для проверки."
     )
 
 
@@ -312,7 +250,7 @@ def find_already_filled_fields(existing_item: Dict[str, Any], update_fields: Dic
     return filled
 
 
-def validate_update_mode(payload: Dict[str, Any], config: Dict[str, Any], update_fields: Dict[str, Any]) -> List[str]:
+def validate_update_mode(payload: Dict[str, Any], update_fields: Dict[str, Any]) -> List[str]:
     errors: List[str] = []
 
     if payload.get("result_status") != UPDATE_ALLOWED_STATUS:
@@ -321,12 +259,8 @@ def validate_update_mode(payload: Dict[str, Any], config: Dict[str, Any], update
         errors.append("update mode requires winner_name")
     if get_winner_price_for_bitrix(payload) in (None, ""):
         errors.append("update mode requires winner_price or winner_offer_price")
-
-    target_stage_id = str(payload.get("target_stage_id") or "").strip()
-    require_stage = bool(config.get("automation", {}).get("require_target_stage_id_for_stage_change", True))
-    if "stageId" in update_fields and require_stage and not target_stage_id:
-        errors.append("stage update requires explicit target_stage_id")
-
+    if payload.get("participants_count") in (None, ""):
+        errors.append("update mode requires participants_count")
     if not update_fields:
         errors.append("there are no fields to update")
 
@@ -342,36 +276,22 @@ def print_plan(payload: Dict[str, Any], update_fields: Dict[str, Any], config_pa
     print(f"Procurement number: {payload.get('procurement_number')}")
     print(f"Result status: {payload.get('result_status')}")
     print(f"Confidence: {payload.get('confidence')}")
-    print(f"Price basis: {normalize_price_basis(payload)}")
+    print("\nStrict CRM update allow-list:")
+    print("  - winner_name_analytics")
+    print("  - winner_price_analytics")
+    print("  - participants_count_analytics")
     print("\nFields planned for update:")
     if not update_fields:
         print("  - no fields")
     else:
         for field_name, value in update_fields.items():
             print(f"  - {field_name}: {value}")
-    print("\nComment preview:")
-    print(build_comment(payload))
-
-
-def add_timeline_comment_if_enabled(webhook_url: str, payload: Dict[str, Any], config: Dict[str, Any]) -> None:
-    if not bool(config.get("automation", {}).get("write_comment", True)):
-        return
-    bitrix_call(
-        webhook_url,
-        "crm.timeline.comment.add",
-        {
-            "fields": {
-                "ENTITY_ID": int(payload["deal_id"]),
-                "ENTITY_TYPE": "deal",
-                "COMMENT": build_comment(payload),
-            }
-        },
-    )
-    print("Timeline comment added.")
+    print("\nPreview:")
+    print(build_comment_preview(payload))
 
 
 def main(argv: Iterable[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Fill Bitrix24 tender result fields safely")
+    parser = argparse.ArgumentParser(description="Fill exactly three Bitrix24 tender result fields safely")
     parser.add_argument("--payload-json", required=True, help="Payload JSON string or path to JSON file")
     parser.add_argument("--mode", choices=sorted(ALLOWED_MODES), default=None, help="Override payload mode")
     parser.add_argument("--config", default=None, help="Path to bitrix_fields.json")
@@ -386,14 +306,12 @@ def main(argv: Iterable[str] | None = None) -> int:
         mode = payload.get("mode") or config.get("automation", {}).get("default_mode", "dry_run")
         payload["mode"] = mode
 
-        calculate_reduction_if_needed(payload)
-
         errors = validate_payload(payload)
         errors.extend(validate_config(config, update_mode=(mode == "update"), config_is_example=config_is_example))
 
         update_fields = build_update_fields(payload, config)
         if mode == "update":
-            errors.extend(validate_update_mode(payload, config, update_fields))
+            errors.extend(validate_update_mode(payload, update_fields))
 
         if errors:
             eprint("Validation failed:")
@@ -427,10 +345,8 @@ def main(argv: Iterable[str] | None = None) -> int:
             "crm.item.update",
             {"entityTypeId": int(config["entityTypeId"]), "id": int(payload["deal_id"]), "fields": update_fields},
         )
-        print("\nBitrix24 deal update completed.")
+        print("\nBitrix24 deal update completed. Only three allowed fields were sent.")
         print(json.dumps(response.get("result", {}), ensure_ascii=False, indent=2))
-
-        add_timeline_comment_if_enabled(webhook_url, payload, config)
         return 0
 
     except json.JSONDecodeError as exc:
