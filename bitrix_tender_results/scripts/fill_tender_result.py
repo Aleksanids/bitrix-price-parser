@@ -4,6 +4,7 @@
 Scope:
 - write only three analytical fields;
 - optionally move deal to analytics stage only when tender specialist ТО is empty;
+- resolve deal by deal_id, linked task CRM binding, or procurement number;
 - never print secrets.
 """
 
@@ -35,6 +36,7 @@ ALLOWED_STATUSES = {
     "procurement_number_mismatch",
     "deal_not_found_by_procurement_number",
     "multiple_deals_found_by_procurement_number",
+    "multiple_deals_found_by_task_id",
     "already_filled",
     "skipped_existing_value",
     "existing_value_conflict",
@@ -116,9 +118,11 @@ def coerce_update_value(payload_field: str, value: Any) -> Any:
     if payload_field == "winner_name":
         return normalize_text(value)
     if payload_field == "participants_count":
-        return to_int(value) if to_int(value) is not None else value
+        parsed = to_int(value)
+        return parsed if parsed is not None else value
     if payload_field == "winner_price":
-        return float(to_decimal(value)) if to_decimal(value) is not None else value
+        parsed = to_decimal(value)
+        return float(parsed) if parsed is not None else value
     return value
 
 
@@ -153,8 +157,8 @@ def validate_payload(payload: Dict[str, Any]) -> List[str]:
         errors.append(f"Invalid mode: {mode!r}. Allowed: {sorted(ALLOWED_MODES)}")
     if status not in ALLOWED_STATUSES:
         errors.append(f"Invalid result_status: {status!r}. Allowed: {sorted(ALLOWED_STATUSES)}")
-    if deal_id in (None, "") and not procurement_number:
-        errors.append("Either deal_id or procurement_number must be provided")
+    if deal_id in (None, "") and not procurement_number and payload.get("task_id") in (None, ""):
+        errors.append("deal_id, task_id, or procurement_number must be provided")
     if deal_id not in (None, "") and (not isinstance(deal_id, int) or deal_id <= 0):
         errors.append("deal_id must be a positive integer when provided")
 
@@ -285,6 +289,8 @@ def deal_contains_procurement_number(deal: Dict[str, Any], procurement_number: s
 
 def search_deals_by_procurement_number(webhook_url: str, procurement_number: str, config: Dict[str, Any]) -> List[Dict[str, Any]]:
     number = normalize_procurement_number(procurement_number)
+    if not number:
+        return []
     select = ["ID", "TITLE"]
     for field in (config.get("deal_search", {}) or {}).get("procurement_number_fields", []) or []:
         if isinstance(field, str) and field not in select:
@@ -306,9 +312,72 @@ def search_deals_by_procurement_number(webhook_url: str, procurement_number: str
     return list(found.values())
 
 
+def extract_deal_ids_from_task_crm(value: Any) -> List[int]:
+    """Extract Bitrix deal IDs from task CRM bindings such as D_15096."""
+    if value in (None, ""):
+        return []
+    if isinstance(value, dict):
+        values = list(value.values())
+    elif isinstance(value, (list, tuple, set)):
+        values = list(value)
+    else:
+        values = [value]
+
+    deal_ids: List[int] = []
+    for item in values:
+        text = str(item or "")
+        for match in re.finditer(r"(?:^|[^A-ZА-Я])D[_-]?(\d+)", text, flags=re.IGNORECASE):
+            deal_id = int(match.group(1))
+            if deal_id not in deal_ids:
+                deal_ids.append(deal_id)
+    return deal_ids
+
+
+def task_response_to_deal_ids(response: Dict[str, Any]) -> List[int]:
+    result = response.get("result")
+    candidates: List[Any] = []
+    if isinstance(result, dict):
+        task = result.get("task") if isinstance(result.get("task"), dict) else result
+        for key in ("ufCrmTask", "UF_CRM_TASK", "uf_crm_task"):
+            if key in task:
+                candidates.append(task.get(key))
+    for candidate in candidates:
+        deal_ids = extract_deal_ids_from_task_crm(candidate)
+        if deal_ids:
+            return deal_ids
+    return []
+
+
+def find_deal_ids_by_task_id(webhook_url: str, task_id: Any) -> List[int]:
+    if task_id in (None, ""):
+        return []
+    task_id_int = int(task_id)
+
+    response = bitrix_call(
+        webhook_url,
+        "tasks.task.get",
+        {"taskId": task_id_int, "select": ["ID", "TITLE", "UF_CRM_TASK"]},
+    )
+    deal_ids = task_response_to_deal_ids(response)
+    if deal_ids:
+        return deal_ids
+
+    response = bitrix_call(webhook_url, "task.item.getdata", {"TASKID": task_id_int})
+    return task_response_to_deal_ids(response)
+
+
 def resolve_deal_id(payload: Dict[str, Any], webhook_url: str, config: Dict[str, Any]) -> Tuple[int, str, List[Dict[str, Any]]]:
     if payload.get("deal_id") not in (None, ""):
         return int(payload["deal_id"]), "payload", []
+
+    task_id = payload.get("task_id")
+    if task_id not in (None, ""):
+        task_deal_ids = find_deal_ids_by_task_id(webhook_url, task_id)
+        if len(task_deal_ids) == 1:
+            return int(task_deal_ids[0]), "found_by_task_id", []
+        if len(task_deal_ids) > 1:
+            raise ControlledStop("manual_check", "multiple_deals_found_by_task_id", {"task_id": task_id, "matched_deal_ids": task_deal_ids})
+
     number = normalize_procurement_number(payload.get("procurement_number"))
     deals = search_deals_by_procurement_number(webhook_url, number, config)
     if not deals:
