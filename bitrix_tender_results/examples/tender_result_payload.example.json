@@ -1,0 +1,21 @@
+{
+  "mode": "dry_run",
+  "deal_id": 16438,
+  "task_id": null,
+  "procurement_number": "0848600002726000322",
+  "nmck": 1839950.0,
+  "protocol_url": "",
+  "protocol_name": "",
+  "protocol_date": "",
+  "winner_name": "",
+  "winner_inn": "",
+  "winner_price": null,
+  "reduction_percent": null,
+  "participants_count": null,
+  "our_place": null,
+  "result_status": "manual_check",
+  "confidence": "medium",
+  "comment": "Тестовый payload. Для реальной записи result_status должен быть ok, winner_name и winner_price должны быть заполнены.",
+  "target_stage_id": "",
+  "allow_overwrite": false
+}
