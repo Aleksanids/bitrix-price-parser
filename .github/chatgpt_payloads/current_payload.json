@@ -1,8 +1,14 @@
 {
-  "mode": "dry_run",
-  "procurement_number": "0000000000000000000",
-  "result_status": "manual_check",
-  "confidence": "low",
+  "mode": "update",
+  "task_id": 44302,
+  "procurement_number": "32615979652",
+  "winner_name": "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ \"СТИЛБЕРГ\"",
+  "winner_price": 156976345.83,
+  "winner_offer_price": 156976345.83,
+  "participants_count": 3,
+  "result_status": "ok",
+  "confidence": "high",
+  "price_basis": "participant_offer_total_unit_price",
   "allow_overwrite": false,
-  "comment": "Placeholder. Replace this file with a real ChatGPT-extracted payload only after winner_name, winner_price, participants_count and procurement_number are known. Dry-run placeholder does not update Bitrix24."
+  "comment": "Данные извлечены ChatGPT из итогового протокола 32615979652 от 21.05.2026. В Bitrix24 передаются только три поля: победитель, цена победителя, количество участников. Сделка определяется по task_id через CRM-связь задачи, затем при пустом поле ТО возможен перенос на аналитику."
 }
