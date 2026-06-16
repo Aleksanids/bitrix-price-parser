@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local secrets and local runtime data
+.env
+*.env
+
+# Local Bitrix24 payloads / experiments
+bitrix_tender_results/config/bitrix_fields.local.json
+bitrix_tender_results/examples/*.local.json
+bitrix_tender_results/tmp/
