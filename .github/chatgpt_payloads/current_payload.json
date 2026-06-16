@@ -1,12 +1,14 @@
 {
   "mode": "update",
-  "procurement_number": "0848300064126000165",
-  "winner_name": "Васильев Никита Вячеславич",
-  "winner_price": 950562306.07,
-  "winner_offer_price": 950562306.07,
+  "task_id": 44298,
+  "procurement_number": "0848300048426000189",
+  "winner_name": "ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ \"СВМ ГРУПП\"",
+  "winner_price": 2336391535.50,
+  "winner_offer_price": 2336391535.50,
   "participants_count": 2,
   "result_status": "ok",
   "confidence": "high",
   "price_basis": "participant_offer_total_unit_price",
-  "allow_overwrite": false
+  "allow_overwrite": false,
+  "comment": "Повторный запуск после ошибки: добавлен task_id 44298 для поиска связанной сделки через CRM-связь задачи Bitrix24."
 }
