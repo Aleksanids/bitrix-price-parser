@@ -1,0 +1,31 @@
+name: ChatGPT Protocol Payload to Bitrix
+
+on:
+  push:
+    paths:
+      - '.github/chatgpt_payloads/current_payload.json'
+
+permissions:
+  contents: read
+
+jobs:
+  fill-from-chatgpt-payload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fill Bitrix from ChatGPT payload
+        env:
+          BITRIX_WEBHOOK_URL: ${{ secrets.BITRIX_WEBHOOK_URL }}
+        run: |
+          python bitrix_tender_results/scripts/fill_tender_result.py \
+            --payload-json .github/chatgpt_payloads/current_payload.json \
+            --mode update
