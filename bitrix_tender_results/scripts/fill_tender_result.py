@@ -3,7 +3,8 @@
 
 Scope:
 - write only three analytical fields;
-- optionally move deal to analytics stage only when tender specialist ТО is empty;
+- move deal to analytics stage only as a second step after three fields are filled;
+- move stage only when tender specialist ТО field is empty;
 - resolve deal by deal_id, linked task CRM binding, or procurement number;
 - never print secrets.
 """
@@ -194,8 +195,8 @@ def validate_config(config: Dict[str, Any], *, update_mode: bool, config_is_exam
     if update_mode and not fields.get("tender_specialist_to"):
         errors.append("Missing config field mapping: tender_specialist_to")
     stage = config.get("analytics_stage", {})
-    if update_mode and (not isinstance(stage, dict) or stage.get("category_id") is None or not isinstance(stage.get("stage_id"), str)):
-        errors.append("config.analytics_stage.category_id and string stage_id are required")
+    if update_mode and (not isinstance(stage, dict) or not isinstance(stage.get("stage_id"), str)):
+        errors.append("config.analytics_stage.stage_id must be a string")
     if update_mode and config_is_example:
         errors.append("Update mode requires bitrix_tender_results/config/bitrix_fields.json, not the example config")
     return errors
@@ -391,7 +392,20 @@ def find_already_filled_fields(existing_item: Dict[str, Any], update_fields: Dic
     return [field for field in update_fields if not is_empty_value(existing_item.get(field))]
 
 
-def build_stage_update(existing_item: Dict[str, Any], config: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, str]:
+def all_analytics_fields_filled(existing_item: Dict[str, Any], config: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    missing: List[str] = []
+    for config_field in PAYLOAD_TO_CONFIG_FIELD.values():
+        bitrix_field = config["fields"].get(config_field)
+        if bitrix_field and is_empty_value(existing_item.get(bitrix_field)):
+            missing.append(bitrix_field)
+    return not missing, missing
+
+
+def build_stage_update_after_result_fields(existing_item: Dict[str, Any], config: Dict[str, Any]) -> Tuple[Dict[str, Any], bool, str]:
+    fields_are_filled, missing_fields = all_analytics_fields_filled(existing_item, config)
+    if not fields_are_filled:
+        return {}, False, "analytics_fields_not_filled:" + ",".join(missing_fields)
+
     to_field = config.get("fields", {}).get("tender_specialist_to")
     if not to_field:
         return {}, False, "tender_specialist_field_not_configured"
@@ -399,8 +413,9 @@ def build_stage_update(existing_item: Dict[str, Any], config: Dict[str, Any]) ->
         return {}, False, "tender_specialist_field_missing_in_deal_response"
     if not is_empty_value(existing_item.get(to_field)):
         return {}, False, "tender_specialist_to_filled"
+
     stage = config.get("analytics_stage", {})
-    return {"CATEGORY_ID": int(stage.get("category_id", 0)), "STAGE_ID": str(stage.get("stage_id", "29"))}, True, "tender_specialist_to_empty"
+    return {"STAGE_ID": str(stage.get("stage_id", "29"))}, True, "analytics_fields_filled_and_tender_specialist_to_empty"
 
 
 def build_comment_preview(payload: Dict[str, Any]) -> str:
@@ -442,10 +457,14 @@ def dry_run_log(payload: Dict[str, Any], config: Dict[str, Any], config_path: Pa
 
 def apply_update(payload: Dict[str, Any], config: Dict[str, Any], webhook_url: str) -> Dict[str, Any]:
     deal_id, source, matches = resolve_deal_id(payload, webhook_url, config)
-    existing = get_existing_deal_fields(webhook_url, deal_id)
+    existing_before = get_existing_deal_fields(webhook_url, deal_id)
     allow_overwrite = bool(payload.get("allow_overwrite", config.get("automation", {}).get("allow_overwrite_default", False)))
-    fields, skipped, conflicts = build_update_fields_with_overwrite_policy(payload, config, existing, allow_overwrite=allow_overwrite)
-    stage_fields, stage_required, stage_reason = build_stage_update(existing, config)
+    analytics_fields, skipped, conflicts = build_update_fields_with_overwrite_policy(
+        payload,
+        config,
+        existing_before,
+        allow_overwrite=allow_overwrite,
+    )
 
     log: Dict[str, Any] = {
         "payload_loaded": True,
@@ -458,24 +477,47 @@ def apply_update(payload: Dict[str, Any], config: Dict[str, Any], webhook_url: s
         "result_status": payload.get("result_status"),
         "allow_overwrite": allow_overwrite,
         "skipped_same_value_fields": skipped,
-        "stage_move_required": stage_required,
-        "stage_move_reason": stage_reason,
+        "fields_to_update": sorted(analytics_fields),
+        "stage_fields_to_update": [],
     }
 
     if conflicts:
-        log.update({"status": "manual_check", "reason": "existing_value_conflict", "conflict_fields": sorted(conflicts), "fields_to_update": sorted(fields)})
+        log.update({
+            "status": "manual_check",
+            "reason": "existing_value_conflict",
+            "conflict_fields": sorted(conflicts),
+            "analytics_update": "not_sent_conflict",
+            "stage_update": "not_sent_result_fields_conflict",
+        })
         return log
 
-    update_fields = dict(fields)
-    update_fields.update(stage_fields)
-    log["fields_to_update"] = sorted(update_fields)
+    analytics_sent = False
+    if analytics_fields:
+        response = bitrix_call(webhook_url, "crm.deal.update", {"id": deal_id, "fields": analytics_fields})
+        analytics_sent = True
+        log["analytics_update"] = "sent"
+        log["analytics_response"] = response.get("result", {})
+    else:
+        log["analytics_update"] = "not_sent_no_new_values"
 
-    if not update_fields:
-        log.update({"status": "no_op", "reason": "all_values_already_match_and_stage_not_required", "bitrix_update": "not_sent_no_changes"})
-        return log
+    # Stage transition is deliberately evaluated only after the result fields are filled.
+    existing_after_analytics = get_existing_deal_fields(webhook_url, deal_id) if analytics_sent else existing_before
+    stage_fields, stage_required, stage_reason = build_stage_update_after_result_fields(existing_after_analytics, config)
+    log["stage_move_required"] = stage_required
+    log["stage_move_reason"] = stage_reason
+    log["stage_fields_to_update"] = sorted(stage_fields)
 
-    response = bitrix_call(webhook_url, "crm.deal.update", {"id": deal_id, "fields": update_fields})
-    log.update({"status": "ok", "reason": "updated", "bitrix_update": "sent", "response": response.get("result", {})})
+    if stage_fields:
+        stage_response = bitrix_call(webhook_url, "crm.deal.update", {"id": deal_id, "fields": stage_fields})
+        log["stage_update"] = "sent"
+        log["stage_response"] = stage_response.get("result", {})
+    else:
+        log["stage_update"] = "not_sent"
+
+    if analytics_sent or stage_fields:
+        log.update({"status": "ok", "reason": "updated"})
+    else:
+        log.update({"status": "no_op", "reason": "all_values_already_match_and_stage_not_required"})
     return log
 
 
